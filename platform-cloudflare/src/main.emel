@@ -4,8 +4,8 @@
 #   GET /hello/<who> -> hello, <who>
 #   GET /boom        -> a defect, answered with 500
 
-import Cloudflare.Worker.{Incoming, Outgoing}
-import Cloudflare.Kv.{Kv}
+import Worker.{Incoming, Outgoing}
+import Kv.{Kv}
 import Std.Console.{Console}
 import Std.Env.{Env}
 import Std.Http.{Request, Response}

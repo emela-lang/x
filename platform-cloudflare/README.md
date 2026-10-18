@@ -30,19 +30,33 @@ npx wrangler deploy   # wrangler.toml の KV の id を本物に替えてから
 - `WorkerPlatform` は `Std.Platform` から SystemFileSystem と SystemEnv（`process.env`）を抜き，WorkerEnv（`[vars]` とシークレット）と WorkerKv を足した layer
 - バインディングは `import { env } from "cloudflare:workers"` で読む．リクエストの引数で `env` を回さずに済む
 
+## 依存して使う
+
+Pome `github.com/emela-lang/x/platform-cloudflare`（ルート名 `Cloudflare`）．JS 専用で，`@external` を使うので，アプリの `Pome.toml` で許す．
+
+```sh
+emela pome add github:emela-lang/x/platform-cloudflare
+```
+
+```toml
+[external]
+allow = ["github.com/emela-lang/x/platform-cloudflare"]
+```
+
+`worker/entry.mjs`，`worker/build.sh`，`wrangler.toml` はアプリ側に写して使う．
+
 ## 構成
 
 | パス | 中身 |
 |---|---|
-| `src/cloudflare/worker.emel` | `Cloudflare.Worker`．`serve`，Request と Response の変換，WorkerEnv，WorkerPlatform |
-| `src/cloudflare/kv.emel` | `Cloudflare.Kv`．`Kv` エフェクトと WorkerKv |
-| `src/main.emel` | サンプル（KV で訪問を数える） |
+| `src/worker.emel` | `Cloudflare.Worker`．`serve`，Request と Response の変換，WorkerEnv，WorkerPlatform |
+| `src/kv.emel` | `Cloudflare.Kv`．`Kv` エフェクトと WorkerKv |
+| `src/main.emel` | サンプル（KV で訪問を数える）．依存されたときは使われない |
 | `worker/entry.mjs` | Worker の `export default { fetch }` |
 | `worker/build.sh` | `emela build` のあと，出力の `file://` を剥がす |
 
 ## 回避していること（コンパイラ側の課題）
 
 - 出力は外部関数のファイルを `file:///...` の絶対 URL で import する（spec 12.1）．esbuild は解決できないので `build.sh` で `file://` を剥がしている．同梱の std と同じく出力先へコピーして相対で import すれば要らなくなる
-- パッケージの配布が未決（18.1 #14）なので，`src/cloudflare/` を自分のプロジェクトに写して使う
 - ハンドラは引数を取れない（8.4）ので，WorkerKv のバインディング名は `KV` に固定している
 - KV の失敗は defect になる（error にしていない）

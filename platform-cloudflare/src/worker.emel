@@ -35,7 +35,7 @@ import Std.Http.{
   Options,
 }
 import Std.Random.{Random, SystemRandom}
-import Cloudflare.Kv.{Kv, WorkerKv}
+import Kv.{Kv, WorkerKv}
 
 ## A request as Workers handed it over, with its body already read as text.
 @external
