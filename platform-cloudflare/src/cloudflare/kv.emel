@@ -1,0 +1,48 @@
+# Workers KV as an effect.
+#
+# WorkerKv uses the KV namespace bound as `KV` in wrangler.toml. A handler cannot take arguments
+# (spec 8.4), so the binding name is fixed for now.
+
+## A text key-value store.
+pub effect Kv {
+  ## The value of `key`, or `None` if it is not set.
+  suspend fn get(key: String) -> Option[String]
+  suspend fn put(key: String, value: String) -> ()
+  ## Does nothing if `key` is not set.
+  suspend fn delete(key: String) -> ()
+}
+
+## The outcome of a get on the host: whether the key was found, and its value.
+@external
+type HostValue
+
+@external(js, "./kv.mjs", "get")
+suspend fn kv_get(key: String) -> HostValue
+
+@external(js, "./kv.mjs", "found")
+fn kv_found(v: HostValue) -> Bool
+
+@external(js, "./kv.mjs", "value")
+fn kv_value(v: HostValue) -> String
+
+@external(js, "./kv.mjs", "put")
+suspend fn kv_put(key: String, value: String) -> ()
+
+@external(js, "./kv.mjs", "remove")
+suspend fn kv_delete(key: String) -> ()
+
+## The KV namespace bound as `KV`. An error from Workers is a defect.
+pub handler WorkerKv implements Kv {
+  suspend fn get(key, resume) {
+    v = kv_get(key)
+    resume(if kv_found(v) { Some(kv_value(v)) } else { None })
+  }
+  suspend fn put(key, value, resume) {
+    kv_put(key, value)
+    resume(())
+  }
+  suspend fn delete(key, resume) {
+    kv_delete(key)
+    resume(())
+  }
+}

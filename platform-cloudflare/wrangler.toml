@@ -1,0 +1,14 @@
+name = "emela-hello"
+main = "worker/entry.mjs"
+compatibility_date = "2026-10-01"
+
+[build]
+command = "sh worker/build.sh"
+
+[vars]
+GREETING = "hello"
+
+# `wrangler dev` uses a local KV; replace the id to deploy (`wrangler kv namespace create KV`).
+[[kv_namespaces]]
+binding = "KV"
+id = "00000000000000000000000000000000"
