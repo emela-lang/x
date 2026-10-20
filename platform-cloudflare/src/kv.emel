@@ -32,7 +32,7 @@ suspend fn kv_put(key: String, value: String) -> ()
 suspend fn kv_delete(key: String) -> ()
 
 ## The KV namespace bound as `KV`. An error from Workers is a defect.
-pub handler WorkerKv implements Kv {
+pub handler WorkerKv: Kv {
   suspend fn get(key, resume) {
     v = kv_get(key)
     resume(if kv_found(v) { Some(kv_value(v)) } else { None })

@@ -1,6 +1,6 @@
 # platform-cloudflare
 
-Emela（0.20）のアプリを Cloudflare Workers で動かす試作．JS ターゲットの出力をそのまま Worker にする．
+Emela のアプリを Cloudflare Workers で動かす試作．JS ターゲットの出力をそのまま Worker にする．
 
 ```emela
 import Cloudflare.Worker.{Incoming, Outgoing}
@@ -20,7 +20,7 @@ npx wrangler dev      # build.command で worker/build.sh が走る
 npx wrangler deploy   # wrangler.toml の KV の id を本物に替えてから
 ```
 
-`emela` は 0.22.0 以降を PATH に置く（依存として使うのも，外部関数のファイルを出力先に写すのも 0.22.0 から）．
+`emela` は 0.24.0 以降を PATH に置く（handler の宣言を `handler WorkerKv: Kv` と書くのが 0.24.0 から）．
 
 ## 仕組み
 

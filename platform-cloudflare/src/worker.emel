@@ -77,7 +77,7 @@ fn var_get(name: String) -> String
 
 ## The Worker's text variables and secrets (`[vars]` and `wrangler secret`). Bindings that are not
 ## text (KV namespaces and so on) are `None`.
-pub handler WorkerEnv implements Env {
+pub handler WorkerEnv: Env {
   fn get(name) {
     if var_has(name) { Some(var_get(name)) } else { None }
   }
