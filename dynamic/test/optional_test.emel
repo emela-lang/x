@@ -1,0 +1,33 @@
+import Std.Map
+import Lib.{Dynamic, Fields, Text, Null, Bool, Key, Segment, DecodeError}
+
+fn failed_at(value: Dynamic) -> (String, List[Segment]) {
+  {
+    Lib.field(value, "name", Lib.optional(Lib.string))
+    ("", [])
+  } escape {
+    DecodeError(expected:, path:, ..) -> (expected, path)
+  }
+}
+
+@test
+fn reads_null_as_none() {
+  decode = Lib.optional(Lib.string)
+  assert decode(Null) == None
+}
+
+@test
+fn reads_a_value_as_some() {
+  decode = Lib.optional(Lib.string)
+  assert decode(Text("a")) == Some("a")
+}
+
+@test
+fn reads_a_missing_key_as_none() {
+  assert Lib.field(Fields(Map.empty()), "name", Lib.optional(Lib.string)) == None
+}
+
+@test
+fn reports_a_wrong_value() {
+  assert failed_at(Fields(Map.from_list([("name", Bool(True))]))) == ("text", [Key("name")])
+}
