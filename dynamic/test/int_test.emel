@@ -1,0 +1,23 @@
+import Lib.{Dynamic, Number, Text, DecodeError}
+import Number
+
+fn expected(value: Dynamic) -> String {
+  {
+    Lib.int(value)
+    ""
+  } escape {
+    DecodeError(expected:, ..) -> expected
+  }
+}
+
+@test
+fn reads_an_int() {
+  assert Lib.int(Number(Number.from_int(-1200))) == -1200
+  assert Lib.int(Number(Number.from_int(0))) == 0
+  assert Lib.int(Number(Number.from_int(2147483647))) == 2147483647
+}
+
+@test
+fn fails_on_a_value_that_is_not_a_number() {
+  assert expected(Text("1")) == "number"
+}

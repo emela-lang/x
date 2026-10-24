@@ -1,0 +1,84 @@
+import Number.{Number, OutOfRange}
+
+fn int64_fails(n: Number) -> Bool {
+  {
+    Number.to_int64(n)
+    False
+  } escape {
+    OutOfRange(..) -> True
+  }
+}
+
+fn int_fails(n: Number) -> Bool {
+  {
+    Number.to_int(n)
+    False
+  } escape {
+    OutOfRange(..) -> True
+  }
+}
+
+fn float(f: Float) -> Number {
+  Number.from_float(f) match {
+    Some(n) -> n
+    None    -> panic("not finite")
+  }
+}
+
+@test
+fn normalizes() {
+  assert Number.from_int(1500) == float(1500.0)
+  assert Number.from_int(0) == float(-0.0)
+  assert Number.from_int(1) == float(1.0)
+  assert Number.from_int64(Int64.from_int(-7)) == Number.from_int(-7)
+}
+
+@test
+fn writes() {
+  assert Number.to_string(Number.from_int(1500)) == "1500"
+  assert Number.to_string(Number.from_int(-1500)) == "-1500"
+  assert Number.to_string(Number.from_int(0)) == "0"
+  assert Number.to_string(float(0.25)) == "0.25"
+  assert Number.to_string(float(-1.5)) == "-1.5"
+  assert Number.to_string(float(123.456)) == "123.456"
+  assert Number.to_string(float(0.000001)) == "0.000001"
+  assert Number.to_string(float(0.0000001)) == "1e-7"
+  assert Number.to_string(float(1.5e300)) == "1.5e300"
+  assert Number.to_string(float(1.0e20)) == "100000000000000000000"
+  assert Number.to_string(float(1.0e21)) == "1e21"
+}
+
+@test
+fn round_trips_floats() {
+  assert Number.to_float(float(0.1)) == 0.1
+  assert Number.to_float(float(-1.5e300)) == -1.5e300
+  assert Number.to_float(float(5.0e-324)) == 5.0e-324
+  assert Number.to_float(Number.from_int(-3)) == -3.0
+}
+
+@test
+fn rejects_nan_and_infinity() {
+  assert Number.from_float(0.0 / 0.0) == None
+  assert Number.from_float(1.0 / 0.0) == None
+  assert Number.from_float(-1.0 / 0.0) == None
+}
+
+@test
+fn reads_ints() {
+  assert Number.to_int(float(1.0e3)) == 1000
+  assert Number.to_int(Number.from_int(-2147483647 - 1)) == -2147483647 - 1
+  assert int_fails(float(1.5))
+  assert int_fails(float(2147483648.0))
+}
+
+@test
+fn reads_int64s() {
+  max = Number.from_int64(9223372036854775807)
+  min = Number.from_int64(-9223372036854775807 - 1)
+  assert Number.to_string(max) == "9223372036854775807"
+  assert Number.to_int64(max) == 9223372036854775807
+  assert Number.to_int64(min) == -9223372036854775807 - 1
+  assert Number.to_int64(Number.from_int(-42)) == Int64.from_int(-42)
+  assert int64_fails(float(9223372036854775808.0))
+  assert int64_fails(float(0.5))
+}

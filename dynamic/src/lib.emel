@@ -1,0 +1,188 @@
+import Std.Map.{Map}
+import Number.{OutOfRange}
+
+pub enum Dynamic {
+  Null
+  Bool(Bool)
+  Number(Number.Number)
+  Text(String)
+  Items(List[Dynamic])
+  Fields(Map[String, Dynamic])
+} derive Eq, Show
+
+pub enum Segment {
+  Key(String)
+  Index(Int)
+}
+  derive Eq, Show
+
+pub error DecodeError(expected: String, actual: Dynamic, path: List[Segment])
+
+impl DecodeError: Show {
+  fn show(self) {
+    path = self.path
+      |> List.map(fn(p) {
+        p match {
+          Key(k)   -> ".#{k}"
+          Index(i) -> "[#{i}]"
+        }
+      })
+      |> String.join("")
+
+    "expected: #{self.expected}, actual: #{kind(self.actual)} at #{path}"
+  }
+}
+
+pub trait Encode {
+  fn to_dynamic(self) -> Dynamic
+}
+
+pub trait Decode {
+  fn from_dynamic(d: Dynamic) -> Self fails DecodeError
+}
+
+pub fn kind(value: Dynamic) -> String {
+  value match {
+    Null      -> "null"
+    Bool(_)   -> "bool"
+    Number(_) -> "number"
+    Text(_)   -> "text"
+    Items(_)  -> "items"
+    Fields(_) -> "fields"
+  }
+}
+
+pub fn string(value: Dynamic) -> String fails DecodeError {
+  value match {
+    Text(s) -> s
+    _       -> fail DecodeError(expected: "text", actual: value, path: [])
+  }
+}
+
+pub fn bool(value: Dynamic) -> Bool fails DecodeError {
+  value match {
+    Bool(b) -> b
+    _       -> fail DecodeError(expected: "bool", actual: value, path: [])
+  }
+}
+
+pub fn int(value: Dynamic) -> Int fails DecodeError {
+  value match {
+    Number(n) -> Number.to_int(n) escape {
+      OutOfRange(n) -> fail DecodeError(expected: "int", actual: value, path: [])
+    }
+    _ -> fail DecodeError(expected: "number", actual: value, path: [])
+  }
+}
+
+pub fn int64(value: Dynamic) -> Int64 fails DecodeError {
+  value match {
+    Number(n) -> Number.to_int64(n) escape {
+      OutOfRange(n) -> fail DecodeError(expected: "int64", actual: value, path: [])
+    }
+    _ -> fail DecodeError(expected: "number", actual: value, path: [])
+  }
+}
+
+pub fn float(value: Dynamic) -> Float fails DecodeError {
+  value match {
+    Number(n) -> Number.to_float(n)
+    _         -> fail DecodeError(expected: "number", actual: value, path: [])
+  }
+}
+
+fn each[A](xs: List[Dynamic], i: Int, item: fn(Dynamic) -> A fails DecodeError) -> List[A]
+  fails DecodeError {
+  xs match {
+    []          -> []
+    [x, ..rest] -> [at(Index(i), item, x), ..each(rest, i + 1, item)]
+  }
+}
+
+fn at[A](segment: Segment, decoder: fn(Dynamic) -> A fails DecodeError, value: Dynamic) -> A
+  fails DecodeError {
+  decoder(value) escape {
+    DecodeError(expected:, actual:, path:) -> fail DecodeError(
+      expected:,
+      actual:,
+      path: [segment, ..path],
+    )
+  }
+}
+
+pub fn list[A](
+  item: fn(Dynamic) -> A fails DecodeError,
+) -> fn(Dynamic) -> List[A] fails DecodeError {
+  fn(value) {
+    value match {
+      Items(xs) -> each(xs, 0, item)
+      _         -> fail DecodeError(expected: "items", actual: value, path: [])
+    }
+  }
+}
+
+pub fn optional[A](
+  decoder: fn(Dynamic) -> A fails DecodeError,
+) -> fn(Dynamic) -> Option[A] fails DecodeError {
+  fn(value) {
+    value match {
+      Null -> None
+      _    -> Some(decoder(value))
+    }
+  }
+}
+
+pub fn dict[V](
+  value: fn(Dynamic) -> V fails DecodeError,
+) -> fn(Dynamic) -> Map[String, V] fails DecodeError {
+  fn(subject) {
+    subject match {
+      Fields(m) -> Map.fold(m, Map.empty(), fn(acc, key, x) {
+        Map.insert(acc, key, at(Key(key), value, x))
+      })
+      _ -> fail DecodeError(expected: "fields", actual: subject, path: [])
+    }
+  }
+}
+
+pub fn index[A](
+  n: Int,
+  decoder: fn(Dynamic) -> A fails DecodeError,
+) -> fn(Dynamic) -> A fails DecodeError {
+  fn(value) {
+    value match {
+      Items(xs) -> at(
+        Index(n),
+        decoder,
+        List.get(xs, n)
+          |> Option.or_fail(
+            DecodeError(expected: "at least #{n + 1} items", actual: value, path: []),
+          ),
+      )
+      _ -> fail DecodeError(expected: "items", actual: value, path: [])
+    }
+  }
+}
+
+pub fn field[A](value: Dynamic, name: String, decoder: fn(Dynamic) -> A fails DecodeError) -> A
+  fails DecodeError {
+  value match {
+    Fields(m) -> at(Key(name), decoder, Map.get(m, name) |> Option.or(Null))
+    _         -> fail DecodeError(expected: "fields", actual: value, path: [])
+  }
+}
+
+pub fn tag(value: Dynamic) -> String fails DecodeError {
+  field(value, "tag", string)
+}
+
+pub fn object(fields: List[(String, Dynamic)]) -> Dynamic {
+  Fields(Map.from_list(fields))
+}
+
+pub fn variant(tag: String, value: Option[Dynamic]) -> Dynamic {
+  value match {
+    Some(payload) -> object([("tag", Text(tag)), ("value", payload)])
+    None          -> object([("tag", Text(tag))])
+  }
+}
