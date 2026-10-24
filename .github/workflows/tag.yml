@@ -1,0 +1,43 @@
+name: tag
+
+# main に入った各 Pome の version から <dir>/v<version> の tag を打つ．
+# 既にある tag は飛ばすので，version を上げていない Pome には何もしない．
+on:
+  push:
+    branches: [main]
+    paths: ["*/Pome.toml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Tag new versions
+        run: |
+          set -euo pipefail
+          new=()
+          for toml in */Pome.toml; do
+            dir=${toml%/Pome.toml}
+            version=$(sed -n 's/^version *= *"\(.*\)"/\1/p' "$toml" | head -n1)
+            if [ -z "$version" ]; then
+              echo "::error file=$toml::version が読めない"
+              exit 1
+            fi
+            tag="$dir/v$version"
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              continue
+            fi
+            git tag "$tag"
+            new+=("$tag")
+            echo "::notice::$tag"
+          done
+          if [ ${#new[@]} -gt 0 ]; then
+            git push origin "${new[@]}"
+          fi
