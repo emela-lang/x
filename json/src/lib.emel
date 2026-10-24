@@ -1,0 +1,233 @@
+import Std.Map.{Map}
+import Dynamic.{Dynamic, Decode, Encode, DecodeError, Null, Bool, Number, Text, Items, Fields}
+import Dynamic.Number
+import Write
+
+## `offset` counts code points from the start of the input.
+pub error SyntaxError(message: String, offset: Int)
+
+## Reads one JSON value, with whitespace allowed around it. For a repeated key in an object,
+## the later value is kept.
+pub fn parse(s: String) -> Dynamic fails SyntaxError {
+  (value, rest) = element(String.chars(s), 0)
+  rest match {
+    Rest([], _)     -> value
+    Rest(_, offset) -> fail SyntaxError(message: "expected the end of input", offset:)
+  }
+}
+
+pub fn to_string(value: Dynamic) -> String {
+  Write.write(value)
+}
+
+pub fn decode[A: Decode](text: String) -> A fails SyntaxError | DecodeError {
+  Decode.from_dynamic(parse(text))
+}
+
+pub fn encode[A: Encode](value: A) -> String {
+  Encode.to_dynamic(value) |> to_string()
+}
+
+# The input that is left, and its offset from the start.
+type Rest(chars: List[String], offset: Int)
+
+# A value with whitespace around it.
+fn element(chars: List[String], offset: Int) -> (Dynamic, Rest) fails SyntaxError {
+  start = skip_space(Rest(chars:, offset:))
+  (value, after) = value(start)
+  (value, skip_space(after))
+}
+
+fn skip_space(rest: Rest) -> Rest {
+  rest.chars match {
+    [c, ..more] if c == " " || c == "\t" || c == "\n" || c == "\r" -> skip_space(
+      Rest(chars: more, offset: rest.offset + 1),
+    )
+    _ -> rest
+  }
+}
+
+fn value(rest: Rest) -> (Dynamic, Rest) fails SyntaxError {
+  rest.chars match {
+    ["{", ..more] -> object(Rest(chars: more, offset: rest.offset + 1))
+    ["[", ..more] -> array(Rest(chars: more, offset: rest.offset + 1))
+    ["\"", ..more] -> {
+      (s, after) = string(Rest(chars: more, offset: rest.offset + 1))
+      (Text(s), after)
+    }
+    ["t", "r", "u", "e", ..more] -> (Bool(True), Rest(chars: more, offset: rest.offset + 4))
+    ["f", "a", "l", "s", "e", ..more] -> (Bool(False), Rest(chars: more, offset: rest.offset + 5))
+    ["n", "u", "l", "l", ..more] -> (Null, Rest(chars: more, offset: rest.offset + 4))
+    [c, ..] if c == "-" || is_digit(c) -> number(rest)
+    []            -> fail SyntaxError(message: "unexpected end of input", offset: rest.offset)
+    _             -> fail SyntaxError(message: "expected a value", offset: rest.offset)
+  }
+}
+
+# After `{`.
+fn object(rest: Rest) -> (Dynamic, Rest) fails SyntaxError {
+  start = skip_space(rest)
+  start.chars match {
+    ["}", ..more] -> (Fields(Map.empty()), Rest(chars: more, offset: start.offset + 1))
+    _             -> members(start, Map.empty())
+  }
+}
+
+# At a key, after `{` or `,` and whitespace.
+fn members(rest: Rest, fields: Map[String, Dynamic]) -> (Dynamic, Rest) fails SyntaxError {
+  key_start = skip_space(rest)
+  (key, after_key) = key_start.chars match {
+    ["\"", ..more] -> string(Rest(chars: more, offset: key_start.offset + 1))
+    []             -> fail SyntaxError(message: "unexpected end of input", offset: key_start.offset)
+    _              -> fail SyntaxError(message: "expected a string key", offset: key_start.offset)
+  }
+  colon = skip_space(after_key)
+  after_colon = colon.chars match {
+    [":", ..more] -> Rest(chars: more, offset: colon.offset + 1)
+    _             -> fail SyntaxError(message: "expected `:`", offset: colon.offset)
+  }
+  (value, after_value) = element(after_colon.chars, after_colon.offset)
+  added = Map.insert(fields, key, value)
+  after_value.chars match {
+    [",", ..more] -> members(Rest(chars: more, offset: after_value.offset + 1), added)
+    ["}", ..more] -> (Fields(added), Rest(chars: more, offset: after_value.offset + 1))
+    _             -> fail SyntaxError(message: "expected `,` or `}`", offset: after_value.offset)
+  }
+}
+
+# After `[`.
+fn array(rest: Rest) -> (Dynamic, Rest) fails SyntaxError {
+  start = skip_space(rest)
+  start.chars match {
+    ["]", ..more] -> (Items([]), Rest(chars: more, offset: start.offset + 1))
+    _             -> items(start, [])
+  }
+}
+
+# At an item, after `[` or `,`. `reversed` holds the items read so far, the last one first.
+fn items(rest: Rest, reversed: List[Dynamic]) -> (Dynamic, Rest) fails SyntaxError {
+  (value, after) = element(rest.chars, rest.offset)
+  added = [value, ..reversed]
+  after.chars match {
+    [",", ..more] -> items(Rest(chars: more, offset: after.offset + 1), added)
+    ["]", ..more] -> (Items(List.reverse(added)), Rest(chars: more, offset: after.offset + 1))
+    _             -> fail SyntaxError(message: "expected `,` or `]`", offset: after.offset)
+  }
+}
+
+# After the opening `"`. Returns the contents and the input after the closing `"`.
+fn string(rest: Rest) -> (String, Rest) fails SyntaxError {
+  (reversed, after) = characters(rest, [])
+  (String.concat(List.reverse(reversed)), after)
+}
+
+fn characters(rest: Rest, reversed: List[String]) -> (List[String], Rest) fails SyntaxError {
+  rest.chars match {
+    ["\"", ..more] -> (reversed, Rest(chars: more, offset: rest.offset + 1))
+    ["\\", ..more] -> {
+      (c, after) = escaped(Rest(chars: more, offset: rest.offset + 1))
+      characters(after, [c, ..reversed])
+    }
+    [c, ..more] -> {
+      if code_point(c) < 32 {
+        fail SyntaxError(message: "control character in a string", offset: rest.offset)
+      }
+      characters(Rest(chars: more, offset: rest.offset + 1), [c, ..reversed])
+    }
+    []             -> fail SyntaxError(message: "unterminated string", offset: rest.offset)
+  }
+}
+
+# After `\`.
+fn escaped(rest: Rest) -> (String, Rest) fails SyntaxError {
+  next = Rest(chars: List.drop(rest.chars, 1), offset: rest.offset + 1)
+  rest.chars match {
+    ["\"", ..] -> ("\"", next)
+    ["\\", ..] -> ("\\", next)
+    ["/", ..]  -> ("/", next)
+    ["b", ..]  -> ("\u{8}", next)
+    ["f", ..]  -> ("\u{c}", next)
+    ["n", ..]  -> ("\n", next)
+    ["r", ..]  -> ("\r", next)
+    ["t", ..]  -> ("\t", next)
+    ["u", ..]  -> unicode(next)
+    _          -> fail SyntaxError(message: "invalid escape", offset: rest.offset)
+  }
+}
+
+# After `\u`. A high surrogate must be followed by `\u` and a low surrogate.
+fn unicode(rest: Rest) -> (String, Rest) fails SyntaxError {
+  (high, after) = hex4(rest)
+  (point, end) = if high >= 0xD800 && high <= 0xDBFF {
+    after.chars match {
+      ["\\", "u", ..more] -> {
+        (low, end) = hex4(Rest(chars: more, offset: after.offset + 2))
+        if low < 0xDC00 || low > 0xDFFF {
+          fail SyntaxError(message: "expected a low surrogate", offset: after.offset)
+        }
+        (0x10000 + (high - 0xD800) * 0x400 + (low - 0xDC00), end)
+      }
+      _ -> fail SyntaxError(message: "expected a low surrogate", offset: after.offset)
+    }
+  } else {
+    (high, after)
+  }
+  String.from_code_point(point) match {
+    Some(c) -> (c, end)
+    None    -> fail SyntaxError(message: "invalid code point", offset: rest.offset - 2)
+  }
+}
+
+fn hex4(rest: Rest) -> (Int, Rest) fails SyntaxError {
+  digits = List.take(rest.chars, 4)
+  values = List.filter_map(digits, hex)
+  if List.length(values) != 4 {
+    fail SyntaxError(message: "expected 4 hexadecimal digits", offset: rest.offset)
+  }
+  (
+    List.fold(values, 0, fn(acc, d) { acc * 16 + d }),
+    Rest(chars: List.drop(rest.chars, 4), offset: rest.offset + 4),
+  )
+}
+
+fn hex(c: String) -> Option[Int] {
+  p = code_point(c)
+  if p >= 48 && p <= 57 {
+    Some(p - 48)
+  } else if p >= 97 && p <= 102 {
+    Some(p - 87)
+  } else if p >= 65 && p <= 70 {
+    Some(p - 55)
+  } else {
+    None
+  }
+}
+
+# Takes the characters that can be part of a number, and leaves checking them to `Number.parse`.
+fn number(rest: Rest) -> (Dynamic, Rest) fails SyntaxError {
+  (lexeme, more) = span(rest.chars, fn(c) {
+    is_digit(c) || c == "-" || c == "+" || c == "." || c == "e" || c == "E"
+  })
+  n = Number.parse(String.concat(lexeme)) escape {
+    ParseError(..) -> fail SyntaxError(message: "invalid number", offset: rest.offset)
+  }
+  (Number(n), Rest(chars: more, offset: rest.offset + List.length(lexeme)))
+}
+
+fn span(chars: List[String], f: fn(String) -> Bool) -> (List[String], List[String]) {
+  chars match {
+    [c, ..more] if f(c) -> {
+      (taken, after) = span(more, f)
+      ([c, ..taken], after)
+    }
+    _ -> ([], chars)
+  }
+}
+
+fn is_digit(c: String) -> Bool {
+  c >= "0" && c <= "9"
+}
+
+fn code_point(c: String) -> Int {
+  List.fold(String.code_points(c), 0, fn(_, p) { p })
+}
