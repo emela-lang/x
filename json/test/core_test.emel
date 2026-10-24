@@ -1,0 +1,35 @@
+import Dynamic.{DecodeError, Key, Index, Segment}
+import Lib.{SyntaxError}
+
+fn failed_at(text: String) -> List[Segment] {
+  {
+    xs: List[List[Int]] = Lib.decode(text)
+    []
+  } escape {
+    DecodeError(path:, ..) -> path
+    SyntaxError(..)        -> [Key("syntax")]
+  }
+}
+
+@test
+fn encodes_core_types() {
+  assert Lib.encode(42) == "42"
+  assert Lib.encode("a") == "\"a\""
+  assert Lib.encode([[1, 2], []]) == "[[1,2],[]]"
+  assert Lib.encode(["a", "b"]) == "[\"a\",\"b\"]"
+}
+
+@test
+fn decodes_core_types() {
+  n: Int = Lib.decode("42")
+  s: String = Lib.decode("\"a\"")
+  xs: List[List[Int]] = Lib.decode("[[1,2],[]]")
+  assert n == 42
+  assert s == "a"
+  assert xs == [[1, 2], []]
+}
+
+@test
+fn reports_the_path_inside_lists() {
+  assert failed_at("[[1],[2,\"x\"]]") == [Index(1), Index(1)]
+}

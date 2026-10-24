@@ -1,0 +1,24 @@
+import Dynamic.{Items, Text}
+import Lib
+
+@test
+fn reads_a_long_array() {
+  s = "[#{String.join(List.map(List.range(0, 100000), fn(_) { "1" }), ",")}]"
+  Lib.parse(s) match {
+    Items(xs) -> assert List.length(xs) == 100000
+    _         -> assert False
+  }
+}
+
+@test
+fn reads_a_long_string() {
+  s = String.concat(List.map(List.range(0, 100000), fn(_) { "a" }))
+  assert Lib.parse("\"#{s}\"") == Text(s)
+}
+
+@test
+fn reads_deep_nesting() {
+  open = String.concat(List.map(List.range(0, 1000), fn(_) { "[" }))
+  close = String.concat(List.map(List.range(0, 1000), fn(_) { "]" }))
+  Lib.parse("#{open}#{close}")
+}

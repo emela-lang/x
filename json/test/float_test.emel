@@ -1,0 +1,8 @@
+import Lib
+
+@test
+fn writes_nan_and_infinity_as_null() {
+  assert Lib.encode(1.5) == "1.5"
+  assert Lib.encode(0.0 / 0.0) == "null"
+  assert Lib.encode([1.0 / 0.0, -1.0 / 0.0]) == "[null,null]"
+}
