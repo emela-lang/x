@@ -41,6 +41,11 @@ pub trait Decode {
   fn from_dynamic(d: Dynamic) -> Self fails DecodeError
 }
 
+pub trait ObjectKey: Ord {
+  fn to_key(self) -> String
+  fn from_key(key: String) -> Self fails DecodeError
+}
+
 pub fn kind(value: Dynamic) -> String {
   value match {
     Null      -> "null"
@@ -184,5 +189,120 @@ pub fn variant(tag: String, value: Option[Dynamic]) -> Dynamic {
   value match {
     Some(payload) -> object([("tag", Text(tag)), ("value", payload)])
     None          -> object([("tag", Text(tag))])
+  }
+}
+
+impl Int: Encode {
+  fn to_dynamic(self) {
+    Number.from_int(self) |> Number()
+  }
+}
+
+impl Int: Decode {
+  fn from_dynamic(d) {
+    int(d)
+  }
+}
+
+impl Int64: Encode {
+  fn to_dynamic(self) {
+    Number.from_int64(self) |> Number()
+  }
+}
+
+impl Int64: Decode {
+  fn from_dynamic(d) {
+    int64(d)
+  }
+}
+
+impl Float: Encode {
+  fn to_dynamic(self) {
+    Number.from_float(self) |> Option.map(fn(n) { Number(n) }) |> Option.or(Null)
+  }
+}
+
+impl Float: Decode {
+  fn from_dynamic(d) {
+    float(d)
+  }
+}
+
+impl String: Encode {
+  fn to_dynamic(self) {
+    Text(self)
+  }
+}
+
+impl String: Decode {
+  fn from_dynamic(d) {
+    string(d)
+  }
+}
+
+impl String: ObjectKey {
+  fn to_key(self) {
+    self
+  }
+
+  fn from_key(key) {
+    key
+  }
+}
+
+impl Bool: Encode {
+  fn to_dynamic(self) {
+    Bool(self)
+  }
+}
+
+impl Bool: Decode {
+  fn from_dynamic(d) {
+    bool(d)
+  }
+}
+
+impl List[A: Encode]: Encode {
+  fn to_dynamic(self) {
+    List.map(self, Encode.to_dynamic) |> Items()
+  }
+}
+
+impl List[A: Decode]: Decode {
+  fn from_dynamic(d) {
+    list(Decode.from_dynamic)(d)
+  }
+}
+
+impl Option[A: Encode]: Encode {
+  fn to_dynamic(self) {
+    self match {
+      Some(x) -> Encode.to_dynamic(x)
+      None    -> Null
+    }
+  }
+}
+
+impl Option[A: Decode]: Decode {
+  fn from_dynamic(d) {
+    optional(Decode.from_dynamic)(d)
+  }
+}
+
+impl Map[K: ObjectKey, V: Encode]: Encode {
+  fn to_dynamic(self) {
+    Map.fold(self, Map.empty(), fn(acc, key, value) {
+      Map.insert(acc, ObjectKey.to_key(key), Encode.to_dynamic(value))
+    })
+      |> Fields()
+  }
+}
+
+impl Map[K: ObjectKey, V: Decode]: Decode {
+  fn from_dynamic(d) {
+    fields = dict(Decode.from_dynamic)(d)
+    fields |> Map.fold(Map.empty(), fn(acc, key, value) {
+      Map.insert(acc, at(Key(key), fn(_) { ObjectKey.from_key(key) }, Text(key)), value)
+    })
   }
 }
