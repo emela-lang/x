@@ -1,0 +1,8 @@
+pub opaque type Redacted[A](value: A)
+
+pub fn make[A](value: A) -> Redacted[A] { Redacted(value:) }
+pub fn reveal[A](r: Redacted[A]) -> A { r.value }
+
+impl Redacted[A]: Show {
+  fn show(self) { "<redacted>" }
+}
