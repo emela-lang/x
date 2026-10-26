@@ -1,0 +1,144 @@
+# Conditions on values, each held together with how it is described to the outside. A constructor
+# that checks its input with rules and the shape of its type read the same list, so what JSON
+# Schema says and what the constructor checks cannot drift apart.
+#
+# ```emela
+# const QUANTITY: List[Rule[Int]] = [Rule.at_least(1), Rule.at_most(99)]
+#
+# pub fn from_int(n: Int) -> Quantity fails Broken { Quantity(value: Rule.check(n, QUANTITY)) }
+#
+# impl Quantity: Shaped {
+#   fn shape(proxy) { Named(name: "Quantity", shape: IntShape |> Rule.annotate(QUANTITY)) }
+# }
+# ```
+#
+# How a broken rule fails is left to the caller: the first one or all of them, as `Broken`, as
+# `AllBroken`, or as an error of its own (`check_or`, `check_all_or`). `broken` only lists them.
+
+import Dynamic.{Dynamic, Number}
+import Dynamic.Number
+import Lib.{Shape}
+
+## A condition on values of A. The rules of this module carry a note for the shape (`minimum`,
+## `min_length`, ...); a `custom` rule carries none, and is described only by its message. It is
+## opaque so that a check and its note are always made together.
+pub opaque type Rule[A](holds: fn(A) -> Bool, note: Option[(String, Dynamic)], text: String)
+
+## The first rule that `value` breaks, by its message.
+pub error Broken(message: String) derive Eq, Show
+
+## Every rule that `value` breaks, by their messages in the order of the rules.
+pub error AllBroken(messages: List[String]) derive Eq, Show
+
+## At least `n`.
+pub fn at_least(n: Int) -> Rule[Int] {
+  Rule(holds: fn(x) { x >= n }, note: Some(("minimum", number(n))), text: "at least #{n}")
+}
+
+## At most `n`.
+pub fn at_most(n: Int) -> Rule[Int] {
+  Rule(holds: fn(x) { x <= n }, note: Some(("maximum", number(n))), text: "at most #{n}")
+}
+
+## At least `n` code points long. JSON Schema counts the length of a string in code points too.
+pub fn min_length(n: Int) -> Rule[String] {
+  Rule(
+    holds: fn(s) { code_point_length(s) >= n },
+    note: Some(("min_length", number(n))),
+    text: "at least #{n} characters",
+  )
+}
+
+## At most `n` code points long.
+pub fn max_length(n: Int) -> Rule[String] {
+  Rule(
+    holds: fn(s) { code_point_length(s) <= n },
+    note: Some(("max_length", number(n))),
+    text: "at most #{n} characters",
+  )
+}
+
+## At least `n` items.
+pub fn min_items[A](n: Int) -> Rule[List[A]] {
+  Rule(
+    holds: fn(xs) { List.length(xs) >= n },
+    note: Some(("min_items", number(n))),
+    text: "at least #{n} items",
+  )
+}
+
+## At most `n` items.
+pub fn max_items[A](n: Int) -> Rule[List[A]] {
+  Rule(
+    holds: fn(xs) { List.length(xs) <= n },
+    note: Some(("max_items", number(n))),
+    text: "at most #{n} items",
+  )
+}
+
+## A rule of your own. `holds` is pure, as the check of a constructor should be. It puts no note
+## on a shape: write a `description` if the outside should know it.
+pub fn custom[A](message: String, holds: fn(A) -> Bool fails {} use {}) -> Rule[A] {
+  Rule(holds:, note: None, text: message)
+}
+
+## What the rule asks for, for people (`"at least 1"`).
+pub fn message[A](rule: Rule[A]) -> String {
+  rule.text
+}
+
+## The rules that `value` breaks, in order. Empty when it keeps them all.
+pub fn broken[A](value: A, rules: List[Rule[A]]) -> List[Rule[A]] {
+  List.filter(rules, fn(rule) { !keeps(value, rule) })
+}
+
+## `value` if it keeps every rule, otherwise fails with the first rule it breaks.
+pub fn check[A](value: A, rules: List[Rule[A]]) -> A fails Broken {
+  check_or(value, rules, fn(rule) { Broken(message: rule.text) })
+}
+
+## `value` if it keeps every rule, otherwise fails with all the rules it breaks.
+pub fn check_all[A](value: A, rules: List[Rule[A]]) -> A fails AllBroken {
+  check_all_or(value, rules, fn(rules) { AllBroken(messages: List.map(rules, message)) })
+}
+
+## `value` if it keeps every rule, otherwise fails with `to_error` of the first rule it breaks. The
+## rules after it are not tried.
+pub fn check_or[A, E](value: A, rules: List[Rule[A]], to_error: fn(Rule[A]) -> E) -> A fails E {
+  List.find(rules, fn(rule) { !keeps(value, rule) }) match {
+    Some(rule) -> fail to_error(rule)
+    None       -> value
+  }
+}
+
+## `value` if it keeps every rule, otherwise fails with `to_error` of all the rules it breaks.
+pub fn check_all_or[A, E](value: A, rules: List[Rule[A]], to_error: fn(List[Rule[A]]) -> E) -> A
+  fails E {
+  broken(value, rules) match {
+    []    -> value
+    found -> fail to_error(found)
+  }
+}
+
+## `shape` with the notes of `rules`. `custom` rules add none.
+pub fn annotate[A](shape: Shape, rules: List[Rule[A]]) -> Shape {
+  List.fold(rules, from: shape, f: fn(s, rule) {
+    rule.note match {
+      Some((key, value)) -> Lib.annotate(s, key, value)
+      None               -> s
+    }
+  })
+}
+
+fn keeps[A](value: A, rule: Rule[A]) -> Bool {
+  holds = rule.holds
+  holds(value)
+}
+
+fn number(n: Int) -> Dynamic {
+  Number(Number.from_int(n))
+}
+
+fn code_point_length(s: String) -> Int {
+  List.length(String.code_points(s))
+}

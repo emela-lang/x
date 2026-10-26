@@ -1,0 +1,127 @@
+import Dynamic.{Number, Text}
+import Dynamic.Number
+import Json
+import Lib.{
+  Shape,
+  Shaped,
+  Field,
+  Variant,
+  NoFields,
+  PositionalFields,
+  NamedFields,
+  IntShape,
+  FloatShape,
+  StringShape,
+  ListOf,
+  OptionOf,
+  MapOf,
+  Record,
+  Variants,
+  Ref,
+  Named,
+}
+import JsonSchema
+import Rule
+
+fn schema_text(shape: Shape) -> String {
+  Json.to_string(JsonSchema.document(shape))
+}
+
+@test
+fn a_value_type_has_no_defs() {
+  assert schema_text(ListOf(StringShape))
+    == "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"items\":{\"type\":\"string\"},\"type\":\"array\"}"
+}
+
+@test
+fn an_option_field_is_not_required() {
+  shape = Record(
+    name: "Member",
+    fields: [
+      Field(name: "name", shape: StringShape),
+      Field(name: "nick", shape: OptionOf(StringShape)),
+      Field(name: "score", shape: FloatShape),
+    ],
+  )
+  assert schema_text(shape)
+    == "{\"$defs\":{\"Member\":{\"properties\":{\"name\":{\"type\":\"string\"},\"nick\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"score\":{\"type\":\"number\"}},\"required\":[\"name\",\"score\"],\"type\":\"object\"}},\"$ref\":\"#/$defs/Member\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"
+}
+
+@test
+fn notes_become_keywords() {
+  shape = IntShape |> Lib.annotate("minimum", Number(Number.from_int(1)))
+  assert schema_text(shape)
+    == "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"minimum\":1,\"type\":\"integer\"}"
+}
+
+@test
+fn an_enum_is_a_tag_and_a_value() {
+  shape = Variants(
+    name: "Tree",
+    variants: [
+      Variant(name: "Leaf", contents: NoFields),
+      Variant(name: "Pair", contents: PositionalFields([IntShape, IntShape])),
+      Variant(
+        name: "Node",
+        contents: NamedFields(
+          [Field(name: "left", shape: Ref("Tree")), Field(name: "right", shape: Ref("Tree"))],
+        ),
+      ),
+    ],
+  )
+  assert schema_text(shape)
+    == "{\"$defs\":{\"Tree\":{\"oneOf\":[{\"properties\":{\"tag\":{\"const\":\"Leaf\"}},\"required\":[\"tag\"],\"type\":\"object\"},{\"properties\":{\"tag\":{\"const\":\"Pair\"},\"value\":{\"maxItems\":2,\"minItems\":2,\"prefixItems\":[{\"type\":\"integer\"},{\"type\":\"integer\"}],\"type\":\"array\"}},\"required\":[\"tag\",\"value\"],\"type\":\"object\"},{\"properties\":{\"tag\":{\"const\":\"Node\"},\"value\":{\"properties\":{\"left\":{\"$ref\":\"#/$defs/Tree\"},\"right\":{\"$ref\":\"#/$defs/Tree\"}},\"required\":[\"left\",\"right\"],\"type\":\"object\"}},\"required\":[\"tag\",\"value\"],\"type\":\"object\"}]}},\"$ref\":\"#/$defs/Tree\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"
+}
+
+@test
+fn a_record_used_twice_is_defined_once() {
+  member = Record(name: "Member", fields: [Field(name: "name", shape: StringShape)])
+  shape = MapOf(key: StringShape, value: ListOf(member))
+  assert schema_text(
+    Record(
+      name: "Team",
+      fields: [Field(name: "lead", shape: member), Field(name: "groups", shape: shape)],
+    ),
+  )
+    == "{\"$defs\":{\"Member\":{\"properties\":{\"name\":{\"type\":\"string\"}},\"required\":[\"name\"],\"type\":\"object\"},\"Team\":{\"properties\":{\"groups\":{\"additionalProperties\":{\"items\":{\"$ref\":\"#/$defs/Member\"},\"type\":\"array\"},\"type\":\"object\"},\"lead\":{\"$ref\":\"#/$defs/Member\"}},\"required\":[\"lead\",\"groups\"],\"type\":\"object\"}},\"$ref\":\"#/$defs/Team\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"
+}
+
+@test
+fn generic_records_are_defined_by_their_full_names() {
+  page = fn(item: Shape) {
+    Record(
+      name: Lib.generic_name("Page", [item]),
+      fields: [Field(name: "items", shape: ListOf(item))],
+    )
+  }
+  member = Record(name: "Member", fields: [])
+  shape = Record(
+    name: "Both",
+    fields: [Field(name: "a", shape: page(member)), Field(name: "b", shape: page(IntShape))],
+  )
+  assert schema_text(shape)
+    == "{\"$defs\":{\"Both\":{\"properties\":{\"a\":{\"$ref\":\"#/$defs/Page%5BMember%5D\"},\"b\":{\"$ref\":\"#/$defs/Page%5BInt%5D\"}},\"required\":[\"a\",\"b\"],\"type\":\"object\"},\"Member\":{\"properties\":{},\"required\":[],\"type\":\"object\"},\"Page[Int]\":{\"properties\":{\"items\":{\"items\":{\"type\":\"integer\"},\"type\":\"array\"}},\"required\":[\"items\"],\"type\":\"object\"},\"Page[Member]\":{\"properties\":{\"items\":{\"items\":{\"$ref\":\"#/$defs/Member\"},\"type\":\"array\"}},\"required\":[\"items\"],\"type\":\"object\"}},\"$ref\":\"#/$defs/Both\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"
+}
+
+@test
+fn a_named_shape_is_defined_once_with_its_notes() {
+  code = Named(
+    name: "Code",
+    shape: StringShape |> Rule.annotate([Rule.min_length(3)]) |> Lib.format("x-code"),
+  )
+  shape = Record(
+    name: "Pair",
+    fields: [Field(name: "a", shape: code), Field(name: "b", shape: code |> Lib.description("b"))],
+  )
+  assert schema_text(shape)
+    == "{\"$defs\":{\"Code\":{\"format\":\"x-code\",\"minLength\":3,\"type\":\"string\"},\"Pair\":{\"properties\":{\"a\":{\"$ref\":\"#/$defs/Code\"},\"b\":{\"$ref\":\"#/$defs/Code\",\"description\":\"b\"}},\"required\":[\"a\",\"b\"],\"type\":\"object\"}},\"$ref\":\"#/$defs/Pair\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"
+}
+
+@test
+fn lengths_of_a_list_are_counts_of_items() {
+  shape = ListOf(IntShape)
+    |> Rule.annotate([Rule.min_items(1), Rule.max_items(5)])
+    |> Lib.annotate("x-note", Text("kept"))
+  assert schema_text(shape)
+    == "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"items\":{\"type\":\"integer\"},\"maxItems\":5,\"minItems\":1,\"type\":\"array\",\"x-note\":\"kept\"}"
+}

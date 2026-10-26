@@ -1,0 +1,204 @@
+# The shape of a type: its fields, its variants and the types inside them, read without a value.
+# `Dynamic` is the contents of one value; a `Shape` describes every value of a type, so JSON
+# Schema, OpenAPI and the checks of a router can be built from it before any value arrives.
+#
+# The compiler derives only Eq, Ord and Show, so every impl of `Shaped` is written by hand for
+# now. The impls below are what `derive Shaped` is meant to generate.
+
+import Std.Map.{Map}
+import Dynamic.{Dynamic, Number, Text}
+import Dynamic.Number
+
+## The shape of a type. The names avoid the variants of `Dynamic` (`Bool`, `Text`, ...), so both
+## can be imported into one module.
+pub enum Shape {
+  BoolShape
+  IntShape
+  Int64Shape
+  FloatShape
+  StringShape
+  ## Any value (`Dynamic` itself).
+  DynamicShape
+  ListOf(Shape)
+  OptionOf(Shape)
+  MapOf(key: Shape, value: Shape)
+  ## A type with fields, by the name of the type. The name of a type with type parameters
+  ## carries its type arguments (`generic_name`).
+  Record(name: String, fields: List[Field])
+  ## An enum, by the name of the enum, named as for `Record`.
+  Variants(name: String, variants: List[Variant])
+  ## A type that appears again inside itself, by its name (`Node(left: Tree, ...)`).
+  Ref(String)
+  ## A type known by its name, with the shape of its contents: an opaque type whose constructor
+  ## checks the contents (`Quantity`, an Int of at least 1).
+  Named(name: String, shape: Shape)
+  ## `shape` with notes on it. The notes of this module are written with `description`,
+  ## `minimum` and the other functions below; a reader passes on the keys it does not know.
+  Annotated(shape: Shape, notes: List[(String, Dynamic)])
+} derive Eq, Show
+
+pub type Field(name: String, shape: Shape) derive Eq, Show
+
+## A variant of an enum, with the contents in the form it is declared in.
+pub type Variant(name: String, contents: Contents) derive Eq, Show
+
+pub enum Contents {
+  NoFields
+  PositionalFields(List[Shape])
+  NamedFields(List[Field])
+} derive Eq, Show
+
+## A type whose shape is known. `proxy` only carries the type: a trait function selects its impl
+## from the types of its arguments, and there is no way to write the type argument at the call.
+## Write `p: Option[User] = None` and call `Shaped.shape(p)`, or use `of_value` and `of_parameter`.
+pub trait Shaped {
+  fn shape(proxy: Option[Self]) -> Shape
+}
+
+impl Bool: Shaped {
+  fn shape(proxy) { BoolShape }
+}
+
+impl Int: Shaped {
+  fn shape(proxy) { IntShape }
+}
+
+impl Int64: Shaped {
+  fn shape(proxy) { Int64Shape }
+}
+
+impl Float: Shaped {
+  fn shape(proxy) { FloatShape }
+}
+
+impl String: Shaped {
+  fn shape(proxy) { StringShape }
+}
+
+impl Dynamic: Shaped {
+  fn shape(proxy) { DynamicShape }
+}
+
+impl List[A: Shaped]: Shaped {
+  fn shape(proxy) {
+    item: Option[A] = None
+    ListOf(Shaped.shape(item))
+  }
+}
+
+impl Option[A: Shaped]: Shaped {
+  fn shape(proxy) {
+    inner: Option[A] = None
+    OptionOf(Shaped.shape(inner))
+  }
+}
+
+impl Map[K: Shaped, V: Shaped]: Shaped {
+  fn shape(proxy) {
+    key: Option[K] = None
+    value: Option[V] = None
+    MapOf(key: Shaped.shape(key), value: Shaped.shape(value))
+  }
+}
+
+## The shape of the type of `value`.
+pub fn of_value[A: Shaped](value: A) -> Shape {
+  Shaped.shape(Some(value))
+}
+
+## The shape of the parameter of `f`, without calling it. A router reads the type of the input
+## of a handler this way.
+pub fn of_parameter[A: Shaped, B, E, R](f: fn(A) -> B fails E use R) -> Shape {
+  proxy: Option[A] = None
+  Shaped.shape(proxy)
+}
+
+## `shape` with the note `name` added after its notes. A note of the same name already there is
+## replaced.
+pub fn annotate(shape: Shape, name: String, value: Dynamic) -> Shape {
+  shape match {
+    Annotated(shape: inner, notes:) -> Annotated(
+      shape: inner,
+      notes: List.append(List.filter(notes, fn((n, _)) { n != name }), [(name, value)]),
+    )
+    _ -> Annotated(shape:, notes: [(name, value)])
+  }
+}
+
+## A description for people.
+pub fn description(shape: Shape, text: String) -> Shape {
+  annotate(shape, "description", Text(text))
+}
+
+## A regular expression that a string matches. Only described: there is no regular expression to
+## check it with, so a `Rule` cannot hold it.
+pub fn pattern(shape: Shape, regex: String) -> Shape {
+  annotate(shape, "pattern", Text(regex))
+}
+
+## The name of a known form of string (`"date-time"`, `"email"`, `"uuid"`). Only described, as for
+## `pattern`.
+pub fn format(shape: Shape, name: String) -> Shape {
+  annotate(shape, "format", Text(name))
+}
+
+## `shape` without its notes and names: what its values are made of.
+pub fn strip(shape: Shape) -> Shape {
+  shape match {
+    Annotated(shape: inner, notes: _) -> strip(inner)
+    Named(name: _, shape: inner)      -> strip(inner)
+    _                                 -> shape
+  }
+}
+
+## The value of the note `name` on `shape`, looking through names, or `None`.
+pub fn note(shape: Shape, name: String) -> Option[Dynamic] {
+  shape match {
+    Annotated(shape: inner, notes:) -> List.find(notes, fn((n, _)) { n == name }) match {
+      Some((_, value)) -> Some(value)
+      None             -> note(inner, name)
+    }
+    Named(name: _, shape: inner) -> note(inner, name)
+    _                            -> None
+  }
+}
+
+## The names of the fields of a record, in declared order, looking through notes and names.
+## Empty for any other shape.
+pub fn field_names(shape: Shape) -> List[String] {
+  strip(shape) match {
+    Record(name: _, fields:) -> List.map(fields, fn(field) { field.name })
+    _                        -> []
+  }
+}
+
+## The name of `shape` as a type is written: `Int`, `List[String]`, `Page[Member]`. Notes are not
+## part of it.
+pub fn name_of(shape: Shape) -> String {
+  shape match {
+    BoolShape                    -> "Bool"
+    IntShape                     -> "Int"
+    Int64Shape                   -> "Int64"
+    FloatShape                   -> "Float"
+    StringShape                  -> "String"
+    DynamicShape                 -> "Dynamic"
+    ListOf(item)                 -> generic_name("List", [item])
+    OptionOf(inner)              -> generic_name("Option", [inner])
+    MapOf(key:, value:)          -> generic_name("Map", [key, value])
+    Record(name:, fields: _)     -> name
+    Variants(name:, variants: _) -> name
+    Ref(name)                    -> name
+    Named(name:, shape: _)       -> name
+    Annotated(shape:, notes: _)  -> name_of(shape)
+  }
+}
+
+## The name of a type with type parameters, from its name and the shapes of its type arguments:
+## `generic_name("Page", [member])` is `"Page[Member]"`. Without arguments, `name` as it is.
+pub fn generic_name(name: String, arguments: List[Shape]) -> String {
+  if List.is_empty(arguments) {
+    name
+  } else {
+    "#{name}[#{List.map(arguments, name_of) |> String.join(", ")}]"
+  }
+}

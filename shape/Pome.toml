@@ -1,0 +1,10 @@
+[pome]
+name = "github.com/emela-lang/x/shape"
+version = "0.1.0"
+emela = "0.25.0"
+
+[dependencies]
+"github.com/emela-lang/x/dynamic" = "v0.3.0"
+
+[dev-dependencies]
+"github.com/emela-lang/x/json" = "v0.2.0"
