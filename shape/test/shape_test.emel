@@ -28,26 +28,28 @@ import Lib.{
 type Quantity(value: Int)
 
 impl Quantity: Shaped {
-  fn shape(proxy) { IntShape |> Lib.annotate("minimum", Number(Number.from_int(1))) }
+  fn shape_in(proxy, visiting) { IntShape |> Lib.annotate("minimum", Number(Number.from_int(1))) }
 }
 
 type Order(id: String, quantity: Quantity, tags: List[String], note: Option[String])
 
 impl Order: Shaped {
-  fn shape(proxy) {
-    id: Option[String] = None
-    quantity: Option[Quantity] = None
-    tags: Option[List[String]] = None
-    note: Option[Option[String]] = None
-    Record(
-      name: "Order",
-      fields: [
-        Field(name: "id", shape: Shaped.shape(id)),
-        Field(name: "quantity", shape: Shaped.shape(quantity)),
-        Field(name: "tags", shape: Shaped.shape(tags)),
-        Field(name: "note", shape: Shaped.shape(note)),
-      ],
-    )
+  fn shape_in(proxy, visiting) {
+    Lib.visit("Order", visiting, fn(visiting) {
+      id: Option[String] = None
+      quantity: Option[Quantity] = None
+      tags: Option[List[String]] = None
+      note: Option[Option[String]] = None
+      Record(
+        name: "Order",
+        fields: [
+          Field(name: "id", shape: Shaped.shape_in(id, visiting)),
+          Field(name: "quantity", shape: Shaped.shape_in(quantity, visiting)),
+          Field(name: "tags", shape: Shaped.shape_in(tags, visiting)),
+          Field(name: "note", shape: Shaped.shape_in(note, visiting)),
+        ],
+      )
+    })
   }
 }
 
@@ -58,21 +60,93 @@ enum Tree {
 }
 
 impl Tree: Shaped {
-  fn shape(proxy) {
-    Variants(
-      name: "Tree",
-      variants: [
-        Variant(name: "Leaf", contents: NoFields),
-        Variant(name: "Pair", contents: PositionalFields([IntShape, IntShape])),
-        Variant(
-          name: "Node",
-          contents: NamedFields(
-            [Field(name: "left", shape: Ref("Tree")), Field(name: "right", shape: Ref("Tree"))],
+  fn shape_in(proxy, visiting) {
+    Lib.visit("Tree", visiting, fn(visiting) {
+      tree: Option[Tree] = None
+      int: Option[Int] = None
+      Variants(
+        name: "Tree",
+        variants: [
+          Variant(name: "Leaf", contents: NoFields),
+          Variant(
+            name: "Pair",
+            contents: PositionalFields(
+              [Shaped.shape_in(int, visiting), Shaped.shape_in(int, visiting)],
+            ),
+          ),
+          Variant(
+            name: "Node",
+            contents: NamedFields(
+              [
+                Field(name: "left", shape: Shaped.shape_in(tree, visiting)),
+                Field(name: "right", shape: Shaped.shape_in(tree, visiting)),
+              ],
+            ),
+          ),
+        ],
+      )
+    })
+  }
+}
+
+type Team(name: String, lead: Member)
+
+type Member(name: String, team: Option[Team])
+
+impl Team: Shaped {
+  fn shape_in(proxy, visiting) {
+    Lib.visit("Team", visiting, fn(visiting) {
+      name: Option[String] = None
+      lead: Option[Member] = None
+      Record(
+        name: "Team",
+        fields: [
+          Field(name: "name", shape: Shaped.shape_in(name, visiting)),
+          Field(name: "lead", shape: Shaped.shape_in(lead, visiting)),
+        ],
+      )
+    })
+  }
+}
+
+impl Member: Shaped {
+  fn shape_in(proxy, visiting) {
+    Lib.visit("Member", visiting, fn(visiting) {
+      name: Option[String] = None
+      team: Option[Option[Team]] = None
+      Record(
+        name: "Member",
+        fields: [
+          Field(name: "name", shape: Shaped.shape_in(name, visiting)),
+          Field(name: "team", shape: Shaped.shape_in(team, visiting)),
+        ],
+      )
+    })
+  }
+}
+
+@test
+fn types_that_refer_to_each_other_end_at_the_first_repeat() {
+  t: Option[Team] = None
+  assert Shaped.shape(t)
+    == Record(
+      name: "Team",
+      fields: [
+        Field(name: "name", shape: StringShape),
+        Field(
+          name: "lead",
+          shape: Record(
+            name: "Member",
+            fields: [
+              Field(name: "name", shape: StringShape),
+              Field(name: "team", shape: OptionOf(Ref("Team"))),
+            ],
           ),
         ),
       ],
     )
-  }
+  m: Option[Member] = None
+  assert Lib.field_names(Shaped.shape(m)) == ["name", "team"]
 }
 
 @test
@@ -156,17 +230,20 @@ fn the_parameter_of_a_function_with_effects() {
 type Page[A](items: List[A], next: Option[String])
 
 impl Page[A: Shaped]: Shaped {
-  fn shape(proxy) {
+  fn shape_in(proxy, visiting) {
     item: Option[A] = None
-    items: Option[List[A]] = None
-    next: Option[Option[String]] = None
-    Record(
-      name: Lib.generic_name("Page", [Shaped.shape(item)]),
-      fields: [
-        Field(name: "items", shape: Shaped.shape(items)),
-        Field(name: "next", shape: Shaped.shape(next)),
-      ],
-    )
+    name = Lib.generic_name("Page", [Shaped.shape_in(item, visiting)])
+    Lib.visit(name, visiting, fn(visiting) {
+      items: Option[List[A]] = None
+      next: Option[Option[String]] = None
+      Record(
+        name:,
+        fields: [
+          Field(name: "items", shape: Shaped.shape_in(items, visiting)),
+          Field(name: "next", shape: Shaped.shape_in(next, visiting)),
+        ],
+      )
+    })
   }
 }
 
@@ -183,7 +260,7 @@ fn a_name_carries_the_type_arguments() {
 type Code(value: String)
 
 impl Code: Shaped {
-  fn shape(proxy) {
+  fn shape_in(proxy, visiting) {
     Named(
       name: "Code",
       shape: StringShape |> Rule.annotate([Rule.min_length(3)]) |> Lib.pattern("^[A-Z]+$"),

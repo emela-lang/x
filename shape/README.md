@@ -8,16 +8,18 @@ import Shape.{Shape, Shaped, Field, Record}
 type MemberPath(team_id: String, member_id: String)
 
 impl MemberPath: Shaped {
-  fn shape(proxy) {
-    team: Option[String] = None
-    member: Option[String] = None
-    Record(
-      name: "MemberPath",
-      fields: [
-        Field(name: "team_id", shape: Shaped.shape(team)),
-        Field(name: "member_id", shape: Shaped.shape(member)),
-      ],
-    )
+  fn shape_in(proxy, visiting) {
+    Shape.visit("MemberPath", visiting, fn(visiting) {
+      team: Option[String] = None
+      member: Option[String] = None
+      Record(
+        name: "MemberPath",
+        fields: [
+          Field(name: "team_id", shape: Shaped.shape_in(team, visiting)),
+          Field(name: "member_id", shape: Shaped.shape_in(member, visiting)),
+        ],
+      )
+    })
   }
 }
 
@@ -31,7 +33,7 @@ Shape.field_names(Shape.of_parameter(show_member)) # ["team_id", "member_id"]
 - `Shaped.shape(proxy: Option[Self])` の `proxy` は型を運ぶだけ．trait の関数は引数の型から impl を選び，呼び出しで型引数を書く構文がないので，`p: Option[User] = None` を渡す．`of_value` と `of_parameter` はこれを隠す
 - `Bool`，`Int`，`Int64`，`Float`，`String`，`Dynamic`，`List`，`Option`，`Map` の impl はここにある
 - 自分の型の impl は今は手で書く．compiler が導出できるのは Eq，Ord，Show だけなので，`derive Shaped` は std に入るときの proposal で足す
-- 自分の中に自分が出てくる型は，2 回目を `Ref("Tree")` にする
+- impl は `shape_in(proxy, visiting)` を書く．`visiting` は今読んでいる途中の record と enum の名前で，record と enum の impl は `Shape.visit(name, visiting, ...)` で包む．すでに読んでいる途中の型は `Ref(name)` になるので，自分を含む型（`Tree`）も互いに参照する型（`Team` と `Member`）も止まる．`Shaped.shape(proxy)` は `visiting` を空にして呼ぶ
 - 型パラメータを持つ型の名前には型引数を入れる．`Shape.generic_name("Page", [Shaped.shape(item)])` は `"Page[Member]"`．`Page[Member]` と `Page[Team]` が別の名前になるので，JSON Schema の `$defs` でもぶつからない
 - 作る関数で中身を確かめている opaque type は，`Named(name: "Quantity", shape: ...)` で名前と中身の形を出す．JSON Schema では `$defs` に 1 回だけ定義される
 - 確かめられる条件（範囲，長さ，個数）は `Shape.Rule` で書く（下）．確かめられない注記は関数で付ける：`description`，`pattern`，`format`．それ以外のキーは `annotate` で付け，読む側は知らないキーをそのまま通す
@@ -59,7 +61,7 @@ pub fn from_int(n: Int) -> Quantity fails InvalidQuantity {
 }
 
 impl Quantity: Shaped {
-  fn shape(proxy) { Named(name: "Quantity", shape: IntShape |> Rule.annotate(QUANTITY)) }
+  fn shape_in(proxy, visiting) { Named(name: "Quantity", shape: IntShape |> Rule.annotate(QUANTITY)) }
 }
 ```
 

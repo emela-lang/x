@@ -8,7 +8,7 @@
 # pub fn from_int(n: Int) -> Quantity fails Broken { Quantity(value: Rule.check(n, QUANTITY)) }
 #
 # impl Quantity: Shaped {
-#   fn shape(proxy) { Named(name: "Quantity", shape: IntShape |> Rule.annotate(QUANTITY)) }
+#   fn shape_in(proxy, visiting) { Named(name: "Quantity", shape: IntShape |> Rule.annotate(QUANTITY)) }
 # }
 # ```
 #

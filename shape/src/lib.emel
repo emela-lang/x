@@ -51,53 +51,84 @@ pub enum Contents {
 ## A type whose shape is known. `proxy` only carries the type: a trait function selects its impl
 ## from the types of its arguments, and there is no way to write the type argument at the call.
 ## Write `p: Option[User] = None` and call `Shaped.shape(p)`, or use `of_value` and `of_parameter`.
+##
+## An impl writes `shape_in`. `visiting` holds the names of the records and enums being read
+## around this one, innermost first: a type already there is written as `Ref` instead of being
+## read again, so types that refer to each other (`Team` with a `Member`, `Member` with a `Team`)
+## end. `visit` does this for a named type; an impl for a type with type arguments passes
+## `visiting` on to them.
 pub trait Shaped {
-  fn shape(proxy: Option[Self]) -> Shape
+  fn shape_in(proxy: Option[Self], visiting: List[String]) -> Shape
+
+  fn shape(proxy: Option[Self]) -> Shape {
+    Shaped.shape_in(proxy, [])
+  }
+}
+
+## The shape of the record or enum `name`: `Ref(name)` if it is already being read in
+## `visiting`, otherwise `build` with `name` added to `visiting`.
+##
+## ```emela
+## impl Team: Shaped {
+##   fn shape_in(proxy, visiting) {
+##     Shape.visit("Team", visiting, fn(visiting) {
+##       lead: Option[Member] = None
+##       Record(name: "Team", fields: [Field(name: "lead", shape: Shaped.shape_in(lead, visiting))])
+##     })
+##   }
+## }
+## ```
+pub fn visit(name: String, visiting: List[String], build: fn(List[String]) -> Shape) -> Shape {
+  if List.any(visiting, fn(n) { n == name }) {
+    Ref(name)
+  } else {
+    build([name, ..visiting])
+  }
 }
 
 impl Bool: Shaped {
-  fn shape(proxy) { BoolShape }
+  fn shape_in(proxy, visiting) { BoolShape }
 }
 
 impl Int: Shaped {
-  fn shape(proxy) { IntShape }
+  fn shape_in(proxy, visiting) { IntShape }
 }
 
 impl Int64: Shaped {
-  fn shape(proxy) { Int64Shape }
+  fn shape_in(proxy, visiting) { Int64Shape }
 }
 
 impl Float: Shaped {
-  fn shape(proxy) { FloatShape }
+  fn shape_in(proxy, visiting) { FloatShape }
 }
 
 impl String: Shaped {
-  fn shape(proxy) { StringShape }
+  fn shape_in(proxy, visiting) { StringShape }
 }
 
 impl Dynamic: Shaped {
-  fn shape(proxy) { DynamicShape }
+  fn shape_in(proxy, visiting) { DynamicShape }
 }
 
 impl List[A: Shaped]: Shaped {
-  fn shape(proxy) {
+  fn shape_in(proxy, visiting) {
     item: Option[A] = None
-    ListOf(Shaped.shape(item))
+    ListOf(Shaped.shape_in(item, visiting))
   }
 }
 
 impl Option[A: Shaped]: Shaped {
-  fn shape(proxy) {
+  fn shape_in(proxy, visiting) {
     inner: Option[A] = None
-    OptionOf(Shaped.shape(inner))
+    OptionOf(Shaped.shape_in(inner, visiting))
   }
 }
 
 impl Map[K: Shaped, V: Shaped]: Shaped {
-  fn shape(proxy) {
+  fn shape_in(proxy, visiting) {
     key: Option[K] = None
     value: Option[V] = None
-    MapOf(key: Shaped.shape(key), value: Shaped.shape(value))
+    MapOf(key: Shaped.shape_in(key, visiting), value: Shaped.shape_in(value, visiting))
   }
 }
 
