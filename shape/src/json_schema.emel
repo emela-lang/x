@@ -1,0 +1,237 @@
+# JSON Schema (draft 2020-12) from a `Shape`: one use of shapes. The schema describes the JSON that
+# `Decode` of x/dynamic accepts for the type, following the rules of x/dynamic:
+#
+# - a field of an `Option` type may be missing (`field` reads a missing key as null), so it is not
+#   in `required`; every other field is
+# - an enum is an object with `"tag"` set to the name of the variant, and `"value"` holding the
+#   contents: an object for named contents, an array for positional ones, nothing for none
+# - a `Map` is an object, since its keys are written as strings
+#
+# What `Encode` writes satisfies the schema, except a Float that is NaN or ±Infinity, which is
+# written as null.
+
+import Std.Map.{Map}
+import Dynamic.{Dynamic, Number, Text, Items, Fields}
+import Dynamic.Number
+import Lib.{
+  Shape,
+  Field,
+  Variant,
+  NoFields,
+  PositionalFields,
+  NamedFields,
+  BoolShape,
+  IntShape,
+  Int64Shape,
+  FloatShape,
+  StringShape,
+  DynamicShape,
+  ListOf,
+  OptionOf,
+  MapOf,
+  Record,
+  Variants,
+  Ref,
+  Named,
+  Annotated,
+}
+
+const DIALECT: String = "https://json-schema.org/draft/2020-12/schema"
+
+## A schema document for `shape`. Each record and enum goes into `$defs` under its name, and is
+## referred to with `$ref`, so a type that refers to itself (`Ref`) resolves. Two different shapes
+## with the same name are not told apart: the first one is kept.
+pub fn document(shape: Shape) -> Dynamic {
+  (root, defs) = schema(shape, [])
+  head = [("$schema", Text(DIALECT))]
+  extra = if List.is_empty(defs) {
+    head
+  } else {
+    List.append(head, [("$defs", Dynamic.object(defs))])
+  }
+  with_pairs(root, extra)
+}
+
+## The schema of `shape` and the definitions it adds to `defs`.
+fn schema(shape: Shape, defs: List[(String, Dynamic)]) -> (Dynamic, List[(String, Dynamic)]) {
+  shape match {
+    BoolShape                  -> (of_type("boolean"), defs)
+    IntShape                   -> (of_type("integer"), defs)
+    Int64Shape                 -> (of_type("integer"), defs)
+    FloatShape                 -> (of_type("number"), defs)
+    StringShape                -> (of_type("string"), defs)
+    DynamicShape               -> (Dynamic.object([]), defs)
+    ListOf(item) -> {
+      (items, defs) = schema(item, defs)
+      (Dynamic.object([("type", Text("array")), ("items", items)]), defs)
+    }
+    OptionOf(inner) -> {
+      (s, defs) = schema(inner, defs)
+      (Dynamic.object([("anyOf", Items([s, of_type("null")]))]), defs)
+    }
+    MapOf(key: _, value:) -> {
+      (values, defs) = schema(value, defs)
+      (Dynamic.object([("type", Text("object")), ("additionalProperties", values)]), defs)
+    }
+    Record(name:, fields:)     -> define(name, defs, fn(defs) { object_of(fields, defs) })
+    Variants(name:, variants:) -> define(name, defs, fn(defs) {
+      (cases, defs) = all(variants, defs, variant)
+      (Dynamic.object([("oneOf", Items(cases))]), defs)
+    })
+    Ref(name)                  -> (reference(name), defs)
+    Named(name:, shape: inner) -> define(name, defs, fn(defs) { schema(inner, defs) })
+    Annotated(shape: inner, notes:) -> {
+      (s, defs) = schema(inner, defs)
+      (with_pairs(s, List.map(notes, keyword)), defs)
+    }
+  }
+}
+
+## A reference to the definition `name`, built by `build` the first time.
+fn define(
+  name: String,
+  defs: List[(String, Dynamic)],
+  build: fn(List[(String, Dynamic)]) -> (Dynamic, List[(String, Dynamic)]),
+) -> (Dynamic, List[(String, Dynamic)]) {
+  if List.any(defs, fn((n, _)) { n == name }) {
+    (reference(name), defs)
+  } else {
+    # The name goes in first, so a `Ref` to it inside does not build it again.
+    (body, built) = build(List.append(defs, [(name, Dynamic.object([]))]))
+    (reference(name), List.map(built, fn((n, s)) { if n == name { (n, body) } else { (n, s) } }))
+  }
+}
+
+## An object with `fields` as its properties.
+fn object_of(
+  fields: List[Field],
+  defs: List[(String, Dynamic)],
+) -> (Dynamic, List[(String, Dynamic)]) {
+  (properties, defs) = all(fields, defs, fn(field, defs) {
+    (s, defs) = schema(field.shape, defs)
+    ((field.name, s), defs)
+  })
+  required = fields
+    |> List.filter(fn(field) { !optional(field.shape) })
+    |> List.map(fn(field) { Text(field.name) })
+  pairs = [("type", Text("object")), ("properties", Dynamic.object(properties))]
+  (Dynamic.object(List.append(pairs, [("required", Items(required))])), defs)
+}
+
+## The schema of one variant: `"tag"` and, unless it has no contents, `"value"`.
+fn variant(v: Variant, defs: List[(String, Dynamic)]) -> (Dynamic, List[(String, Dynamic)]) {
+  tag = ("tag", Dynamic.object([("const", Text(v.name))]))
+  (value, defs) = v.contents match {
+    NoFields -> (None, defs)
+    PositionalFields(shapes) -> {
+      (items, defs) = all(shapes, defs, schema)
+      n = Number(Number.from_int(List.length(shapes)))
+      array = Dynamic.object(
+        [("type", Text("array")), ("prefixItems", Items(items)), ("minItems", n), ("maxItems", n)],
+      )
+      (Some(array), defs)
+    }
+    NamedFields(fields) -> {
+      (object, defs) = object_of(fields, defs)
+      (Some(object), defs)
+    }
+  }
+  (properties, required) = value match {
+    None    -> ([tag], [Text("tag")])
+    Some(s) -> ([tag, ("value", s)], [Text("tag"), Text("value")])
+  }
+  result = Dynamic.object(
+    [
+      ("type", Text("object")),
+      ("properties", Dynamic.object(properties)),
+      ("required", Items(required)),
+    ],
+  )
+  (result, defs)
+}
+
+## `f` applied to each of `xs` in order, threading the definitions through.
+fn all[A, B](
+  xs: List[A],
+  defs: List[(String, Dynamic)],
+  f: fn(A, List[(String, Dynamic)]) -> (B, List[(String, Dynamic)]),
+) -> (List[B], List[(String, Dynamic)]) {
+  (reversed, defs) = List.fold(xs, from: ([], defs), f: fn((acc, defs), x) {
+    (y, defs) = f(x, defs)
+    ([y, ..acc], defs)
+  })
+  (List.reverse(reversed), defs)
+}
+
+## Whether a field of this shape may be missing.
+fn optional(shape: Shape) -> Bool {
+  Lib.strip(shape) match {
+    OptionOf(_) -> True
+    _           -> False
+  }
+}
+
+fn of_type(name: String) -> Dynamic {
+  Dynamic.object([("type", Text(name))])
+}
+
+## A note of x/shape as the JSON Schema keyword (`min_length` is `minLength`, `min_items` is
+## `minItems`). Any other key is passed on as it is.
+fn keyword(note: (String, Dynamic)) -> (String, Dynamic) {
+  (key, value) = note
+  name = key match {
+    "min_length" -> "minLength"
+    "max_length" -> "maxLength"
+    "min_items"  -> "minItems"
+    "max_items"  -> "maxItems"
+    _            -> key
+  }
+  (name, value)
+}
+
+## A `$ref` to the definition `name`. The name is a JSON Pointer token (`~` and `/` escaped) in the
+## fragment of a URI, so the characters a fragment cannot hold (`[`, `]`, a space) are
+## percent-encoded: `Page[Member]` is `#/$defs/Page%5BMember%5D`.
+fn reference(name: String) -> Dynamic {
+  Dynamic.object([("$ref", Text("#/$defs/#{pointer_token(name)}"))])
+}
+
+fn pointer_token(name: String) -> String {
+  String.chars(name)
+    |> List.map(fn(c) {
+      c match {
+        "~" -> "~0"
+        "/" -> "~1"
+        _   -> if fragment_char(c) { c } else { percent(c) }
+      }
+    })
+    |> String.join("")
+}
+
+## Whether the one-character string `c` may stand as it is in the fragment of a URI: ASCII letters
+## and digits and `-._~!$&'()*+,;=:@/?` (RFC 3986). Names in Emela are ASCII.
+fn fragment_char(c: String) -> Bool {
+  String.code_points(c) match {
+    [p] -> (p >= 0x30 && p <= 0x39)
+      || (p >= 0x41 && p <= 0x5A)
+      || (p >= 0x61 && p <= 0x7A)
+      || String.contains("-._~!$&'()*+,;=:@/?", c)
+    _ -> False
+  }
+}
+
+## `%` and two upper-case hexadecimal digits for an ASCII character.
+fn percent(c: String) -> String {
+  digits = "0123456789ABCDEF"
+  p = String.code_points(c) |> List.head |> Option.or(0)
+  hex = fn(n) { String.chars(digits) |> List.get(n) |> Option.or("0") }
+  "%#{hex(p / 16)}#{hex(p % 16)}"
+}
+
+## `schema` (an object) with `pairs` added; a key already there is replaced.
+fn with_pairs(schema: Dynamic, pairs: List[(String, Dynamic)]) -> Dynamic {
+  schema match {
+    Fields(m) -> Fields(List.fold(pairs, from: m, f: fn(acc, (k, v)) { Map.insert(acc, k, v) }))
+    _         -> schema
+  }
+}

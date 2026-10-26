@@ -1,0 +1,115 @@
+import Dynamic.{Number}
+import Dynamic.Number
+import Rule.{Rule, Broken, AllBroken}
+import Lib.{IntShape, StringShape, ListOf, Annotated, Named, Record, Field}
+import JsonSchema
+import Json
+
+const QUANTITY: List[Rule[Int]] = [Rule.at_least(1), Rule.at_most(99)]
+
+## A number of items, checked by its constructor.
+type Quantity(value: Int)
+
+error InvalidQuantity(given: Int, reason: String) derive Show
+
+fn quantity(n: Int) -> Quantity fails InvalidQuantity {
+  Quantity(
+    value: Rule.check_or(n, QUANTITY, fn(rule) {
+      InvalidQuantity(given: n, reason: Rule.message(rule))
+    }),
+  )
+}
+
+fn even() -> Rule[Int] {
+  Rule.custom("an even number", fn(n) { n % 2 == 0 })
+}
+
+fn number(n: Int) -> Dynamic.Dynamic {
+  Number(Number.from_int(n))
+}
+
+@test
+fn check_fails_with_the_first_broken_rule() {
+  assert Rule.check(5, QUANTITY) == 5
+  assert (Rule.check(0, QUANTITY) |> Int.to_string escape { Broken(message:) -> message })
+    == "at least 1"
+  assert (Rule.check(100, QUANTITY) |> Int.to_string escape { Broken(message:) -> message })
+    == "at most 99"
+}
+
+@test
+fn check_all_lists_every_broken_rule() {
+  rules = [Rule.at_least(10), even()]
+  assert Rule.check_all(12, rules) == 12
+  assert (Rule.check_all(3, rules) |> fn(_) { [] } escape { AllBroken(messages:) -> messages })
+    == ["at least 10", "an even number"]
+}
+
+@test
+fn check_or_fails_with_an_error_of_your_own() {
+  assert quantity(3).value == 3
+  assert (quantity(0).value |> Int.to_string escape {
+    InvalidQuantity(given:, reason:) -> "#{given}: #{reason}"
+  })
+    == "0: at least 1"
+}
+
+@test
+fn check_all_or_gets_every_broken_rule() {
+  rules = [Rule.at_least(10), even()]
+  count = Rule.check_all_or(3, rules, fn(broken) {
+    Broken(message: "#{List.length(broken)} rules")
+  })
+    |> Int.to_string
+    escape {
+      Broken(message:) -> message
+    }
+  assert count == "2 rules"
+}
+
+@test
+fn broken_lists_without_failing() {
+  rules = [Rule.at_least(10), even(), Rule.at_most(99)]
+  assert List.map(Rule.broken(3, rules), Rule.message) == ["at least 10", "an even number"]
+  assert Rule.broken(12, rules) |> List.is_empty
+}
+
+@test
+fn a_length_counts_code_points() {
+  assert Rule.check("東京", [Rule.min_length(2), Rule.max_length(2)]) == "東京"
+  # One grapheme cluster of five code points: too long for a length of 1.
+  family = "👨‍👩‍👧"
+  assert List.length(Rule.broken(family, [Rule.max_length(1)])) == 1
+}
+
+@test
+fn items_are_counted() {
+  rules: List[Rule[List[Int]]] = [Rule.min_items(1), Rule.max_items(2)]
+  assert List.map(Rule.broken([], rules), Rule.message) == ["at least 1 items"]
+  assert Rule.broken([1, 2], rules) |> List.is_empty
+}
+
+@test
+fn the_shape_carries_the_notes_of_the_rules() {
+  assert Rule.annotate(IntShape, QUANTITY)
+    == Annotated(shape: IntShape, notes: [("minimum", number(1)), ("maximum", number(99))])
+  assert Rule.annotate(IntShape, [even()]) == IntShape
+}
+
+@test
+fn json_schema_reads_the_same_rules() {
+  name_rules = [Rule.min_length(1), Rule.max_length(20)]
+  shape = Record(
+    name: "Line",
+    fields: [
+      Field(name: "name", shape: StringShape |> Rule.annotate(name_rules)),
+      Field(
+        name: "quantity",
+        shape: Named(name: "Quantity", shape: IntShape |> Rule.annotate(QUANTITY)),
+      ),
+      Field(name: "tags", shape: ListOf(StringShape) |> Rule.annotate([Rule.max_items(3)])),
+    ],
+  )
+  assert Json.to_string(JsonSchema.document(shape))
+    == "{\"$defs\":{\"Line\":{\"properties\":{\"name\":{\"maxLength\":20,\"minLength\":1,\"type\":\"string\"},\"quantity\":{\"$ref\":\"#/$defs/Quantity\"},\"tags\":{\"items\":{\"type\":\"string\"},\"maxItems\":3,\"type\":\"array\"}},\"required\":[\"name\",\"quantity\",\"tags\"],\"type\":\"object\"},\"Quantity\":{\"maximum\":99,\"minimum\":1,\"type\":\"integer\"}},\"$ref\":\"#/$defs/Line\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"
+}
