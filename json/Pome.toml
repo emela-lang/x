@@ -1,8 +1,8 @@
 [pome]
 name = "github.com/emela-lang/x/json"
-version = "0.1.0"
-emela = "0.24.0"
+version = "0.2.0"
+emela = "0.25.0"
 
 [dependencies]
-"github.com/emela-lang/x/dynamic" = "v0.2.0"
+"github.com/emela-lang/x/dynamic" = "v0.3.0"
 
