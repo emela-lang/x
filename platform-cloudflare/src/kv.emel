@@ -1,7 +1,8 @@
 # Workers KV as an effect.
 #
-# WorkerKv uses the KV namespace bound as `KV` in wrangler.toml. A handler cannot take arguments
-# (spec 8.4), so the binding name is fixed for now.
+# WorkerKv uses the KV namespace bound under the name it is given (`with WorkerKv(binding: "KV")`).
+# WorkerPlatform has it with `KV`; to use another one, list it after the layer:
+# `with WorkerPlatform, WorkerKv(binding: "SESSIONS") { ... }`.
 
 ## A text key-value store.
 pub effect Kv {
@@ -17,7 +18,7 @@ pub effect Kv {
 type HostValue
 
 @external(js, "./kv.mjs", "get")
-suspend fn kv_get(key: String) -> HostValue
+suspend fn kv_get(binding: String, key: String) -> HostValue
 
 @external(js, "./kv.mjs", "found")
 fn kv_found(v: HostValue) -> Bool
@@ -26,23 +27,27 @@ fn kv_found(v: HostValue) -> Bool
 fn kv_value(v: HostValue) -> String
 
 @external(js, "./kv.mjs", "put")
-suspend fn kv_put(key: String, value: String) -> ()
+suspend fn kv_put(binding: String, key: String, value: String) -> ()
 
 @external(js, "./kv.mjs", "remove")
-suspend fn kv_delete(key: String) -> ()
+suspend fn kv_delete(binding: String, key: String) -> ()
 
-## The KV namespace bound as `KV`. An error from Workers is a defect.
-pub handler WorkerKv: Kv {
+## The KV namespace bound as `binding` in wrangler.toml. An error from Workers is a defect, and so
+## is a `binding` that names no KV namespace.
+pub handler WorkerKv(binding: String): Kv {
+  init(binding: String) {
+    WorkerKv(binding:)
+  }
   suspend fn get(key, resume) {
-    v = kv_get(key)
+    v = kv_get(self.binding, key)
     resume(if kv_found(v) { Some(kv_value(v)) } else { None })
   }
   suspend fn put(key, value, resume) {
-    kv_put(key, value)
+    kv_put(self.binding, key, value)
     resume(())
   }
   suspend fn delete(key, resume) {
-    kv_delete(key)
+    kv_delete(self.binding, key)
     resume(())
   }
 }
