@@ -1,5 +1,5 @@
 name = "emela-hello"
-main = "worker/entry.mjs"
+main = "target/emela/js/main.mjs"
 compatibility_date = "2026-10-01"
 
 [build]

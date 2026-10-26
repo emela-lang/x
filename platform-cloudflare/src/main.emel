@@ -2,43 +2,35 @@
 #
 #   GET /            -> hello, with the visit count
 #   GET /hello/<who> -> hello, <who>
-#   GET /boom        -> a defect, answered with 500
+#   GET /boom        -> a defect, answered with 500 by `Http.serve`
 
-import Worker.{Incoming, Outgoing}
+import Worker.{WorkerPlatform}
 import Kv.{Kv}
 import Std.Console.{Console}
 import Std.Env.{Env}
-import Std.Http.{Request, Response}
+import Std.Http
+import Std.Http.Request.{Request, Get}
+import Std.Http.Response.{Response}
 
-pub fn fetch(incoming: Incoming) -> Outgoing {
-  Worker.serve(incoming, handle)
+@entry(Http.serve)
+pub fn app(request: Request) -> Response {
+  with WorkerPlatform { route(request) }
 }
 
-fn handle(req: Request) -> Response use { Console, Env, Kv } {
-  path = path_of(req.url)
-  (use Console).print_line("#{req.url}")
-  if path == "/" {
-    kv = use Kv
-    count = kv.get("visits") |> Option.and_then(parse_count) |> Option.or(0)
-    kv.put("visits", Int.to_string(count + 1))
-    greeting = (use Env).get("GREETING") |> Option.or("hello")
-    Http.response(200, "#{greeting} from Emela (visit ##{count + 1})\n")
-  } else if String.starts_with(path, "/hello/") {
-    who = String.split(path, "/hello/") |> List.tail |> String.join("/hello/")
-    Http.response(200, "hello, #{who}\n")
-  } else if path == "/boom" {
-    panic("boom")
-  } else {
-    Http.response(404, "not found\n")
+fn route(request: Request) -> Response use { Console, Env, Kv } {
+  (use Console).print_line("#{request.method} #{request.url}")
+  (request.method, Request.segments(request)) match {
+    (Get, []) -> {
+      kv = use Kv
+      count = kv.get("visits") |> Option.and_then(parse_count) |> Option.or(0)
+      kv.put("visits", Int.to_string(count + 1))
+      greeting = (use Env).get("GREETING") |> Option.or("hello")
+      Response.new(200, "#{greeting} from Emela (visit ##{count + 1})\n")
+    }
+    (Get, ["hello", who]) -> Response.new(200, "hello, #{who}\n")
+    (Get, ["boom"])       -> panic("boom")
+    _                     -> Response.new(404, "not found\n")
   }
-}
-
-## The path of `url` (`https://a.example/x?y` -> `/x`).
-fn path_of(url: String) -> String {
-  after_scheme = String.split(url, "://") |> List.tail |> String.join("://")
-  rest = String.split(after_scheme, "/") |> List.tail |> String.join("/")
-  path = String.split(rest, "?") |> List.head |> Option.or("")
-  "/#{path}"
 }
 
 fn parse_count(s: String) -> Option[Int] {

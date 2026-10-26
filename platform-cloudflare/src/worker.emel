@@ -1,73 +1,27 @@
-# Runs an Emela app as a Cloudflare Worker.
+# The handlers and the layer for running an Emela app as a Cloudflare Worker.
 #
-# Workers calls `fetch` once per request, so the app is a function from a request to a response,
-# not a loop that accepts connections. The entry module exports it:
+# The app is an HTTP service of `Std.Http.serve` (`[lib.http-service]`): Workers calls the `fetch`
+# of the default export of `main.mjs` once per request, so `wrangler.toml` points `main` at it.
+# The app opens WorkerPlatform inside the fn:
 #
 # ```emela
-# import Cloudflare.Worker.{Incoming, Outgoing}
+# import Cloudflare.Worker.{WorkerPlatform}
+# import Std.Http
+# import Std.Http.Request.{Request}
+# import Std.Http.Response.{Response}
 #
-# pub fn fetch(incoming: Incoming) -> Outgoing {
-#   Worker.serve(incoming, handle)
+# @entry(Http.serve)
+# pub fn app(request: Request) -> Response {
+#   with WorkerPlatform { route(request) }
 # }
 # ```
-#
-# `worker/entry.mjs` is the Worker's `export default { fetch }`. It reads the request body, calls
-# the exported `fetch` and turns the result into a JS `Response`.
 
-import Std.Clock.{Clock, SystemClock}
-import Std.Console.{Console, SystemConsole}
+import Std.Clock.{SystemClock}
+import Std.Console.{SystemConsole}
 import Std.Env.{Env}
-import Std.Fiber
-import Std.Cause
-import Std.Fiber.{Success, Failure}
-import Std.Http.{
-  Http,
-  SystemHttp,
-  Request,
-  Response,
-  Method,
-  Get,
-  Head,
-  Post,
-  Put,
-  Patch,
-  Delete,
-  Options,
-}
-import Std.Random.{Random, SystemRandom}
-import Kv.{Kv, WorkerKv}
-
-## A request as Workers handed it over, with its body already read as text.
-@external
-pub type Incoming
-
-## A response for Workers to send.
-@external
-pub type Outgoing
-
-@external(js, "./worker.mjs", "method")
-fn incoming_method(req: Incoming) -> String use {}
-
-@external(js, "./worker.mjs", "url")
-fn incoming_url(req: Incoming) -> String use {}
-
-@external(js, "./worker.mjs", "body")
-fn incoming_body(req: Incoming) -> String use {}
-
-@external(js, "./worker.mjs", "headerCount")
-fn incoming_header_count(req: Incoming) -> Int use {}
-
-@external(js, "./worker.mjs", "headerName")
-fn incoming_header_name(req: Incoming, index: Int) -> String use {}
-
-@external(js, "./worker.mjs", "headerValue")
-fn incoming_header_value(req: Incoming, index: Int) -> String use {}
-
-@external(js, "./worker.mjs", "newResponse")
-fn host_response(status: Int, body: String) -> Outgoing use {}
-
-@external(js, "./worker.mjs", "withHeader")
-fn host_with_header(res: Outgoing, name: String, value: String) -> Outgoing use {}
+import Std.Http.{SystemHttp}
+import Std.Random.{SystemRandom}
+import Kv.{WorkerKv}
 
 @external(js, "./worker.mjs", "hasVar")
 fn var_has(name: String) -> Bool
@@ -83,79 +37,13 @@ pub handler WorkerEnv: Env {
   }
 }
 
-## The handlers that work on Workers. `Std.Platform` also has SystemFileSystem and reads
-## `process.env`, which Workers does not have.
+## The handlers that work on Workers, with WorkerKv on the KV namespace bound as `KV`.
+## `Std.Platform` also has SystemFileSystem and reads `process.env`, which Workers does not have.
 pub layer WorkerPlatform {
   SystemConsole
   SystemClock
   SystemRandom
   WorkerEnv
   SystemHttp
-  WorkerKv
-}
-
-## Runs `app` on the request inside WorkerPlatform. An error or a defect of `app` becomes a 500
-## and is written to the log; a method that `Std.Http` has no name for is a 405.
-pub fn serve[E, R](
-  incoming: Incoming,
-  app: fn(Request) -> Response fails E use { Console, Clock, Random, Env, Http, Kv, R },
-) -> Outgoing use { Async, R } {
-  to_request(incoming) match {
-    None -> to_outgoing(Http.response(405, "method not allowed"))
-    Some(req) -> with WorkerPlatform {
-      Fiber.attempt(fn() { app(req) }) match {
-        Success(res) -> to_outgoing(res)
-        Failure(cause) -> {
-          (use Console).print_error_line(
-            "#{method_name(req.method)} #{req.url}: #{Cause.to_string(cause)}",
-          )
-          to_outgoing(Http.response(500, "internal server error"))
-        }
-      }
-    }
-  }
-}
-
-## The request as a `Std.Http` value. `None` if its method is not one of `Method`.
-pub fn to_request(incoming: Incoming) -> Option[Request] {
-  headers = List.map(List.range(0, incoming_header_count(incoming)), fn(i) {
-    (incoming_header_name(incoming, i), incoming_header_value(incoming, i))
-  })
-  parse_method(incoming_method(incoming))
-    |> Option.map(fn(method) {
-      Request(method:, url: incoming_url(incoming), headers:, body: incoming_body(incoming))
-    })
-}
-
-## The response for Workers to send.
-pub fn to_outgoing(res: Response) -> Outgoing {
-  List.fold(res.headers, from: host_response(res.status, res.body), f: fn(out, pair) {
-    (name, value) = pair
-    host_with_header(out, name, value)
-  })
-}
-
-fn parse_method(name: String) -> Option[Method] {
-  name match {
-    "GET"     -> Some(Get)
-    "HEAD"    -> Some(Head)
-    "POST"    -> Some(Post)
-    "PUT"     -> Some(Put)
-    "PATCH"   -> Some(Patch)
-    "DELETE"  -> Some(Delete)
-    "OPTIONS" -> Some(Options)
-    _         -> None
-  }
-}
-
-fn method_name(method: Method) -> String {
-  method match {
-    Get     -> "GET"
-    Head    -> "HEAD"
-    Post    -> "POST"
-    Put     -> "PUT"
-    Patch   -> "PATCH"
-    Delete  -> "DELETE"
-    Options -> "OPTIONS"
-  }
+  WorkerKv(binding: "KV")
 }
