@@ -36,7 +36,7 @@ Shape.field_names(Shape.of_parameter(show_member)) # ["team_id", "member_id"]
 - impl は `shape_in(proxy, visiting)` を書く．`visiting` は今読んでいる途中の record と enum の名前で，record と enum の impl は `Shape.visit(name, visiting, ...)` で包む．すでに読んでいる途中の型は `Ref(name)` になるので，自分を含む型（`Tree`）も互いに参照する型（`Team` と `Member`）も止まる．`Shaped.shape(proxy)` は `visiting` を空にして呼ぶ
 - 型パラメータを持つ型の名前には型引数を入れる．`Shape.generic_name("Page", [Shaped.shape(item)])` は `"Page[Member]"`．`Page[Member]` と `Page[Team]` が別の名前になるので，JSON Schema の `$defs` でもぶつからない
 - 作る関数で中身を確かめている opaque type は，`Named(name: "Quantity", shape: ...)` で名前と中身の形を出す．JSON Schema では `$defs` に 1 回だけ定義される
-- 確かめられる条件（範囲，長さ，個数）は `Shape.Rule` で書く（下）．確かめられない注記は関数で付ける：`description`，`pattern`，`format`．それ以外のキーは `annotate` で付け，読む側は知らないキーをそのまま通す
+- 注記は関数で付ける：`description`，`pattern`，`format`，`minimum`，`maximum`，`min_length`，`max_length`，`min_items`，`max_items`．どれも説明するだけで，値を確かめない．確かめる条件は `Shape.Rule` で書く（下）と，同じ注記が付く．それ以外のキーは `annotate` で付け，読む側は知らないキーをそのまま通す
 - variant の名前は説明する型の名前（`Int`，`List`）で，モジュールで修飾して `Shape.Int` と書く．`Bool` は `Dynamic` の variant にもあるので，修飾なしで両方を import すると，どちらかを修飾することになる
 - パッケージを `shaped` にしなかったのは，モジュール `Shaped` と trait `Shaped` が `.` の左でぶつかる（E0218）ため
 

@@ -19,10 +19,10 @@ import Dynamic.{Dynamic, Number}
 import Dynamic.Number
 import Lib.{Shape}
 
-## A condition on values of A. The rules of this module carry a note for the shape (`minimum`,
-## `min_length`, ...); a `custom` rule carries none, and is described only by its message. It is
-## opaque so that a check and its note are always made together.
-pub opaque type Rule[A](holds: fn(A) -> Bool, note: Option[(String, Dynamic)], text: String)
+## A condition on values of A. The rules of this module carry a note for the shape, written with the
+## functions of `Shape` (`minimum`, `min_length`, ...); a `custom` rule carries none, and is
+## described only by its message. It is opaque so that a check and its note are always made together.
+pub opaque type Rule[A](holds: fn(A) -> Bool, describe: fn(Shape) -> Shape, text: String)
 
 ## The first rule that `value` breaks, by its message.
 pub error Broken(message: String) derive Eq, Show
@@ -32,19 +32,19 @@ pub error AllBroken(messages: List[String]) derive Eq, Show
 
 ## At least `n`.
 pub fn at_least(n: Int) -> Rule[Int] {
-  Rule(holds: fn(x) { x >= n }, note: Some(("minimum", number(n))), text: "at least #{n}")
+  Rule(holds: fn(x) { x >= n }, describe: fn(s) { Lib.minimum(s, n) }, text: "at least #{n}")
 }
 
 ## At most `n`.
 pub fn at_most(n: Int) -> Rule[Int] {
-  Rule(holds: fn(x) { x <= n }, note: Some(("maximum", number(n))), text: "at most #{n}")
+  Rule(holds: fn(x) { x <= n }, describe: fn(s) { Lib.maximum(s, n) }, text: "at most #{n}")
 }
 
 ## At least `n` code points long. JSON Schema counts the length of a string in code points too.
 pub fn min_length(n: Int) -> Rule[String] {
   Rule(
     holds: fn(s) { code_point_length(s) >= n },
-    note: Some(("min_length", number(n))),
+    describe: fn(s) { Lib.min_length(s, n) },
     text: "at least #{n} characters",
   )
 }
@@ -53,7 +53,7 @@ pub fn min_length(n: Int) -> Rule[String] {
 pub fn max_length(n: Int) -> Rule[String] {
   Rule(
     holds: fn(s) { code_point_length(s) <= n },
-    note: Some(("max_length", number(n))),
+    describe: fn(s) { Lib.max_length(s, n) },
     text: "at most #{n} characters",
   )
 }
@@ -62,7 +62,7 @@ pub fn max_length(n: Int) -> Rule[String] {
 pub fn min_items[A](n: Int) -> Rule[List[A]] {
   Rule(
     holds: fn(xs) { List.length(xs) >= n },
-    note: Some(("min_items", number(n))),
+    describe: fn(s) { Lib.min_items(s, n) },
     text: "at least #{n} items",
   )
 }
@@ -71,7 +71,7 @@ pub fn min_items[A](n: Int) -> Rule[List[A]] {
 pub fn max_items[A](n: Int) -> Rule[List[A]] {
   Rule(
     holds: fn(xs) { List.length(xs) <= n },
-    note: Some(("max_items", number(n))),
+    describe: fn(s) { Lib.max_items(s, n) },
     text: "at most #{n} items",
   )
 }
@@ -79,7 +79,7 @@ pub fn max_items[A](n: Int) -> Rule[List[A]] {
 ## A rule of your own. `holds` is pure, as the check of a constructor should be. It puts no note
 ## on a shape: write a `description` if the outside should know it.
 pub fn custom[A](message: String, holds: fn(A) -> Bool fails {} use {}) -> Rule[A] {
-  Rule(holds:, note: None, text: message)
+  Rule(holds:, describe: fn(s) { s }, text: message)
 }
 
 ## What the rule asks for, for people (`"at least 1"`).
@@ -123,20 +123,14 @@ pub fn check_all_or[A, E](value: A, rules: List[Rule[A]], to_error: fn(List[Rule
 ## `shape` with the notes of `rules`. `custom` rules add none.
 pub fn annotate[A](shape: Shape, rules: List[Rule[A]]) -> Shape {
   List.fold(rules, from: shape, f: fn(s, rule) {
-    rule.note match {
-      Some((key, value)) -> Lib.annotate(s, key, value)
-      None               -> s
-    }
+    describe = rule.describe
+    describe(s)
   })
 }
 
 fn keeps[A](value: A, rule: Rule[A]) -> Bool {
   holds = rule.holds
   holds(value)
-}
-
-fn number(n: Int) -> Dynamic {
-  Number(Number.from_int(n))
 }
 
 fn code_point_length(s: String) -> Int {
