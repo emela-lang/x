@@ -1,0 +1,53 @@
+# A text key-value store as an effect. The store is provided by a service, not by the host, so
+# the handlers live with the service they talk to (`CloudflareKv` in x/platform-cloudflare);
+# this Pome has the effect and TestKv.
+#
+# ```emela
+# import Kv.{Kv}
+#
+# fn remember(name: String) -> Bool use { Kv } {
+#   kv = use Kv
+#   seen = kv.get(name) != None
+#   kv.put(name, "seen")
+#   seen
+# }
+# ```
+#
+# Kv promises only what every store gives: a value put is what a later get on the same key
+# returns, until it is put again or deleted. When a put on one machine is seen by a get on
+# another, and whether keys expire, is up to the handler; its documentation says.
+
+import Std.Map.{Map}
+import Std.State.{State}
+
+## A store of text values under text keys.
+pub effect Kv {
+  ## The value of `key`, or `None` if it is not set.
+  suspend fn get(key: String) -> Option[String]
+  ## Sets `key` to `value`, replacing the value it had.
+  suspend fn put(key: String, value: String) -> ()
+  ## Unsets `key`. Does nothing if it is not set.
+  suspend fn delete(key: String) -> ()
+}
+
+## The test handler. The store is `State[Map[String, String]]`, so use it inside `State.run`
+## with the entries to start from:
+##
+## ```emela
+## (seen, store) = State.run(Map.empty(), fn() { with TestKv { remember("a") } })
+## ```
+##
+## Every operation takes effect at once and never suspends.
+pub handler TestKv: Kv {
+  suspend fn get(key, resume) {
+    resume(Map.get((use State[Map[String, String]]).get(), key))
+  }
+  suspend fn put(key, value, resume) {
+    (use State[Map[String, String]]).update(fn(m) { Map.insert(m, key, value) })
+    resume(())
+  }
+  suspend fn delete(key, resume) {
+    (use State[Map[String, String]]).update(fn(m) { Map.remove(m, key) })
+    resume(())
+  }
+}
