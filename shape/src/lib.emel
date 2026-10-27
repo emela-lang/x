@@ -173,6 +173,40 @@ pub fn format(shape: Shape, name: String) -> Shape {
   annotate(shape, "format", Text(name))
 }
 
+## The least number allowed. Only described, as are the notes below: a `Rule` checks them.
+pub fn minimum(shape: Shape, n: Int) -> Shape {
+  annotate(shape, "minimum", number(n))
+}
+
+## The greatest number allowed.
+pub fn maximum(shape: Shape, n: Int) -> Shape {
+  annotate(shape, "maximum", number(n))
+}
+
+## The least length of a string, counted in code points.
+pub fn min_length(shape: Shape, n: Int) -> Shape {
+  annotate(shape, "min_length", number(n))
+}
+
+## The greatest length of a string, counted in code points.
+pub fn max_length(shape: Shape, n: Int) -> Shape {
+  annotate(shape, "max_length", number(n))
+}
+
+## The least number of items of a list.
+pub fn min_items(shape: Shape, n: Int) -> Shape {
+  annotate(shape, "min_items", number(n))
+}
+
+## The greatest number of items of a list.
+pub fn max_items(shape: Shape, n: Int) -> Shape {
+  annotate(shape, "max_items", number(n))
+}
+
+fn number(n: Int) -> Dynamic {
+  Number(Number.from_int(n))
+}
+
 ## `shape` without its notes and names: what its values are made of.
 pub fn strip(shape: Shape) -> Shape {
   shape match {
