@@ -1,42 +1,38 @@
-# Workers KV as an effect.
+# Workers KV as a handler of Kv (x/kv).
 #
-# WorkerKv uses the KV namespace bound under the name it is given (`with WorkerKv(binding: "KV")`).
-# WorkerPlatform has it with `KV`; to use another one, list it after the layer:
-# `with WorkerPlatform, WorkerKv(binding: "SESSIONS") { ... }`.
+# CloudflareKv uses the KV namespace bound under the name it is given
+# (`with CloudflareKv(binding: "KV")`). CloudflarePlatform has it with `KV`; to use another one,
+# list it after the layer: `with CloudflarePlatform, CloudflareKv(binding: "SESSIONS") { ... }`.
 
-## A text key-value store.
-pub effect Kv {
-  ## The value of `key`, or `None` if it is not set.
-  suspend fn get(key: String) -> Option[String]
-  suspend fn put(key: String, value: String) -> ()
-  ## Does nothing if `key` is not set.
-  suspend fn delete(key: String) -> ()
-}
+import Kv.{Kv}
 
 ## The outcome of a get on the host: whether the key was found, and its value.
 @external
 type HostValue
 
-@external(js, "./kv.mjs", "get")
+@external(js, "./workers_kv.mjs", "get")
 suspend fn kv_get(binding: String, key: String) -> HostValue
 
-@external(js, "./kv.mjs", "found")
+@external(js, "./workers_kv.mjs", "found")
 fn kv_found(v: HostValue) -> Bool
 
-@external(js, "./kv.mjs", "value")
+@external(js, "./workers_kv.mjs", "value")
 fn kv_value(v: HostValue) -> String
 
-@external(js, "./kv.mjs", "put")
+@external(js, "./workers_kv.mjs", "put")
 suspend fn kv_put(binding: String, key: String, value: String) -> ()
 
-@external(js, "./kv.mjs", "remove")
+@external(js, "./workers_kv.mjs", "remove")
 suspend fn kv_delete(binding: String, key: String) -> ()
 
 ## The KV namespace bound as `binding` in wrangler.toml. An error from Workers is a defect, and so
 ## is a `binding` that names no KV namespace.
-pub handler WorkerKv(binding: String): Kv {
+##
+## Workers KV is eventually consistent: a put can take 60 seconds or more to be seen by gets in
+## other locations.
+pub handler CloudflareKv(binding: String): Kv {
   init(binding: String) {
-    WorkerKv(binding:)
+    CloudflareKv(binding:)
   }
   suspend fn get(key, resume) {
     v = kv_get(self.binding, key)

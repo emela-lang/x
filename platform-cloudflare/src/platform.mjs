@@ -1,4 +1,4 @@
-// Host functions for Cloudflare.Worker (worker.emel).
+// Host functions for Cloudflare.Platform (platform.emel).
 //
 // The bindings are read from `cloudflare:workers`, so they need not be passed along with each
 // request (`Std.Http.serve` hands the Emela side only the request).

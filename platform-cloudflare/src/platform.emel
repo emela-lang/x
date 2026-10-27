@@ -2,17 +2,17 @@
 #
 # The app is an HTTP service of `Std.Http.serve` (`[lib.http-service]`): Workers calls the `fetch`
 # of the default export of `main.mjs` once per request, so `wrangler.toml` points `main` at it.
-# The app opens WorkerPlatform inside the fn:
+# The app opens CloudflarePlatform inside the fn:
 #
 # ```emela
-# import Cloudflare.Worker.{WorkerPlatform}
+# import Cloudflare.Platform.{CloudflarePlatform}
 # import Std.Http
 # import Std.Http.Request.{Request}
 # import Std.Http.Response.{Response}
 #
 # @entry(Http.serve)
 # pub fn app(request: Request) -> Response {
-#   with WorkerPlatform { route(request) }
+#   with CloudflarePlatform { route(request) }
 # }
 # ```
 
@@ -21,29 +21,29 @@ import Std.Console.{SystemConsole}
 import Std.Env.{Env}
 import Std.Http.{SystemHttp}
 import Std.Random.{SystemRandom}
-import Kv.{WorkerKv}
+import WorkersKv.{CloudflareKv}
 
-@external(js, "./worker.mjs", "hasVar")
+@external(js, "./platform.mjs", "hasVar")
 fn var_has(name: String) -> Bool
 
-@external(js, "./worker.mjs", "getVar")
+@external(js, "./platform.mjs", "getVar")
 fn var_get(name: String) -> String
 
 ## The Worker's text variables and secrets (`[vars]` and `wrangler secret`). Bindings that are not
 ## text (KV namespaces and so on) are `None`.
-pub handler WorkerEnv: Env {
+pub handler CloudflareEnv: Env {
   fn get(name) {
     if var_has(name) { Some(var_get(name)) } else { None }
   }
 }
 
-## The handlers that work on Workers, with WorkerKv on the KV namespace bound as `KV`.
+## The handlers that work on Workers, with CloudflareKv on the KV namespace bound as `KV`.
 ## `Std.Platform` also has SystemFileSystem and reads `process.env`, which Workers does not have.
-pub layer WorkerPlatform {
+pub layer CloudflarePlatform {
   SystemConsole
   SystemClock
   SystemRandom
-  WorkerEnv
+  CloudflareEnv
   SystemHttp
-  WorkerKv(binding: "KV")
+  CloudflareKv(binding: "KV")
 }
