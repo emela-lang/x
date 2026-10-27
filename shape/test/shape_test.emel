@@ -10,13 +10,13 @@ import Lib.{
   NoFields,
   PositionalFields,
   NamedFields,
-  BoolShape,
-  IntShape,
-  StringShape,
-  DynamicShape,
-  ListOf,
-  OptionOf,
-  MapOf,
+  Bool,
+  Int,
+  String,
+  Any,
+  List,
+  Option,
+  Map,
   Record,
   Variants,
   Ref,
@@ -28,7 +28,7 @@ import Lib.{
 type Quantity(value: Int)
 
 impl Quantity: Shaped {
-  fn shape_in(proxy, visiting) { IntShape |> Lib.annotate("minimum", Number(Number.from_int(1))) }
+  fn shape_in(proxy, visiting) { Int |> Lib.annotate("minimum", Number(Number.from_int(1))) }
 }
 
 type Order(id: String, quantity: Quantity, tags: List[String], note: Option[String])
@@ -132,14 +132,14 @@ fn types_that_refer_to_each_other_end_at_the_first_repeat() {
     == Record(
       name: "Team",
       fields: [
-        Field(name: "name", shape: StringShape),
+        Field(name: "name", shape: String),
         Field(
           name: "lead",
           shape: Record(
             name: "Member",
             fields: [
-              Field(name: "name", shape: StringShape),
-              Field(name: "team", shape: OptionOf(Ref("Team"))),
+              Field(name: "name", shape: String),
+              Field(name: "team", shape: Option(Ref("Team"))),
             ],
           ),
         ),
@@ -151,17 +151,17 @@ fn types_that_refer_to_each_other_end_at_the_first_repeat() {
 
 @test
 fn the_shapes_of_the_built_in_types() {
-  assert Lib.of_value(True) == BoolShape
-  assert Lib.of_value(["a"]) == ListOf(StringShape)
-  assert Lib.of_value(Some(1)) == OptionOf(IntShape)
-  assert Lib.of_value(Map.from_list([("a", 1)])) == MapOf(key: StringShape, value: IntShape)
-  assert Lib.of_value(Text("a")) == DynamicShape
+  assert Lib.of_value(True) == Bool
+  assert Lib.of_value(["a"]) == List(String)
+  assert Lib.of_value(Some(1)) == Option(Int)
+  assert Lib.of_value(Map.from_list([("a", 1)])) == Map(key: String, value: Int)
+  assert Lib.of_value(Text("a")) == Any
 }
 
 @test
 fn a_proxy_needs_no_value() {
   p: Option[List[Option[Int]]] = None
-  assert Shaped.shape(p) == ListOf(OptionOf(IntShape))
+  assert Shaped.shape(p) == List(Option(Int))
 }
 
 @test
@@ -174,21 +174,21 @@ fn a_record_lists_its_fields_in_order() {
 fn a_note_is_read_back() {
   p: Option[Quantity] = None
   shape = Shaped.shape(p)
-  assert Lib.strip(shape) == IntShape
+  assert Lib.strip(shape) == Int
   assert Lib.note(shape, "minimum") == Some(Number(Number.from_int(1)))
   assert Lib.note(shape, "maximum") == None
-  assert Lib.note(IntShape, "minimum") == None
+  assert Lib.note(Int, "minimum") == None
 }
 
 @test
 fn annotate_replaces_a_note_of_the_same_name() {
-  shape = IntShape
+  shape = Int
     |> Lib.annotate("minimum", Number(Number.from_int(1)))
     |> Lib.annotate("maximum", Number(Number.from_int(9)))
     |> Lib.annotate("minimum", Number(Number.from_int(2)))
   assert shape
     == Annotated(
-      shape: IntShape,
+      shape: Int,
       notes: [("maximum", Number(Number.from_int(9))), ("minimum", Number(Number.from_int(2)))],
     )
 }
@@ -198,7 +198,7 @@ fn field_names_look_through_notes() {
   p: Option[Order] = None
   annotated = Shaped.shape(p) |> Lib.annotate("description", Text("an order"))
   assert Lib.field_names(annotated) == ["id", "quantity", "tags", "note"]
-  assert Lib.field_names(IntShape) == []
+  assert Lib.field_names(Int) == []
 }
 
 @test
@@ -263,7 +263,7 @@ impl Code: Shaped {
   fn shape_in(proxy, visiting) {
     Named(
       name: "Code",
-      shape: StringShape |> Rule.annotate([Rule.min_length(3)]) |> Lib.pattern("^[A-Z]+$"),
+      shape: String |> Rule.annotate([Rule.min_length(3)]) |> Lib.pattern("^[A-Z]+$"),
     )
   }
 }
@@ -273,8 +273,19 @@ fn notes_are_read_through_a_name() {
   p: Option[Code] = None
   shape = Shaped.shape(p) |> Lib.description("a code")
   assert Lib.name_of(shape) == "Code"
-  assert Lib.strip(shape) == StringShape
+  assert Lib.strip(shape) == String
   assert Lib.note(shape, "description") == Some(Text("a code"))
   assert Lib.note(shape, "min_length") == Some(Number(Number.from_int(3)))
   assert Lib.note(shape, "pattern") == Some(Text("^[A-Z]+$"))
+}
+
+@test
+fn bounds_are_written_as_notes() {
+  shape = Lib.Int |> Lib.minimum(1) |> Lib.maximum(99)
+  assert Lib.note(shape, "minimum") == Some(Number(Number.from_int(1)))
+  assert Lib.note(shape, "maximum") == Some(Number(Number.from_int(99)))
+  text = Lib.String |> Lib.min_length(1) |> Lib.max_length(80)
+  assert Lib.note(text, "max_length") == Some(Number(Number.from_int(80)))
+  items = Lib.List(Lib.String) |> Lib.min_items(1) |> Lib.max_items(10)
+  assert Lib.note(items, "min_items") == Some(Number(Number.from_int(1)))
 }

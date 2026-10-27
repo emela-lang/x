@@ -9,19 +9,19 @@ import Std.Map.{Map}
 import Dynamic.{Dynamic, Number, Text}
 import Dynamic.Number
 
-## The shape of a type. The names avoid the variants of `Dynamic` (`Bool`, `Text`, ...), so both
-## can be imported into one module.
+## The shape of a type. The variants are named after the types they describe (`Int`, `List`), and
+## are meant to be written with the module (`Shape.Int`): `Bool` is also a variant of `Dynamic`.
 pub enum Shape {
-  BoolShape
-  IntShape
-  Int64Shape
-  FloatShape
-  StringShape
+  Bool
+  Int
+  Int64
+  Float
+  String
   ## Any value (`Dynamic` itself).
-  DynamicShape
-  ListOf(Shape)
-  OptionOf(Shape)
-  MapOf(key: Shape, value: Shape)
+  Any
+  List(Shape)
+  Option(Shape)
+  Map(key: Shape, value: Shape)
   ## A type with fields, by the name of the type. The name of a type with type parameters
   ## carries its type arguments (`generic_name`).
   Record(name: String, fields: List[Field])
@@ -87,40 +87,40 @@ pub fn visit(name: String, visiting: List[String], build: fn(List[String]) -> Sh
 }
 
 impl Bool: Shaped {
-  fn shape_in(proxy, visiting) { BoolShape }
+  fn shape_in(proxy, visiting) { Bool }
 }
 
 impl Int: Shaped {
-  fn shape_in(proxy, visiting) { IntShape }
+  fn shape_in(proxy, visiting) { Int }
 }
 
 impl Int64: Shaped {
-  fn shape_in(proxy, visiting) { Int64Shape }
+  fn shape_in(proxy, visiting) { Int64 }
 }
 
 impl Float: Shaped {
-  fn shape_in(proxy, visiting) { FloatShape }
+  fn shape_in(proxy, visiting) { Float }
 }
 
 impl String: Shaped {
-  fn shape_in(proxy, visiting) { StringShape }
+  fn shape_in(proxy, visiting) { String }
 }
 
 impl Dynamic: Shaped {
-  fn shape_in(proxy, visiting) { DynamicShape }
+  fn shape_in(proxy, visiting) { Any }
 }
 
 impl List[A: Shaped]: Shaped {
   fn shape_in(proxy, visiting) {
     item: Option[A] = None
-    ListOf(Shaped.shape_in(item, visiting))
+    List(Shaped.shape_in(item, visiting))
   }
 }
 
 impl Option[A: Shaped]: Shaped {
   fn shape_in(proxy, visiting) {
     inner: Option[A] = None
-    OptionOf(Shaped.shape_in(inner, visiting))
+    Option(Shaped.shape_in(inner, visiting))
   }
 }
 
@@ -128,7 +128,7 @@ impl Map[K: Shaped, V: Shaped]: Shaped {
   fn shape_in(proxy, visiting) {
     key: Option[K] = None
     value: Option[V] = None
-    MapOf(key: Shaped.shape_in(key, visiting), value: Shaped.shape_in(value, visiting))
+    Map(key: Shaped.shape_in(key, visiting), value: Shaped.shape_in(value, visiting))
   }
 }
 
@@ -173,6 +173,40 @@ pub fn format(shape: Shape, name: String) -> Shape {
   annotate(shape, "format", Text(name))
 }
 
+## The least number allowed. Only described, as are the notes below: a `Rule` checks them.
+pub fn minimum(shape: Shape, n: Int) -> Shape {
+  annotate(shape, "minimum", number(n))
+}
+
+## The greatest number allowed.
+pub fn maximum(shape: Shape, n: Int) -> Shape {
+  annotate(shape, "maximum", number(n))
+}
+
+## The least length of a string, counted in code points.
+pub fn min_length(shape: Shape, n: Int) -> Shape {
+  annotate(shape, "min_length", number(n))
+}
+
+## The greatest length of a string, counted in code points.
+pub fn max_length(shape: Shape, n: Int) -> Shape {
+  annotate(shape, "max_length", number(n))
+}
+
+## The least number of items of a list.
+pub fn min_items(shape: Shape, n: Int) -> Shape {
+  annotate(shape, "min_items", number(n))
+}
+
+## The greatest number of items of a list.
+pub fn max_items(shape: Shape, n: Int) -> Shape {
+  annotate(shape, "max_items", number(n))
+}
+
+fn number(n: Int) -> Dynamic {
+  Number(Number.from_int(n))
+}
+
 ## `shape` without its notes and names: what its values are made of.
 pub fn strip(shape: Shape) -> Shape {
   shape match {
@@ -207,15 +241,15 @@ pub fn field_names(shape: Shape) -> List[String] {
 ## part of it.
 pub fn name_of(shape: Shape) -> String {
   shape match {
-    BoolShape                    -> "Bool"
-    IntShape                     -> "Int"
-    Int64Shape                   -> "Int64"
-    FloatShape                   -> "Float"
-    StringShape                  -> "String"
-    DynamicShape                 -> "Dynamic"
-    ListOf(item)                 -> generic_name("List", [item])
-    OptionOf(inner)              -> generic_name("Option", [inner])
-    MapOf(key:, value:)          -> generic_name("Map", [key, value])
+    Bool                         -> "Bool"
+    Int                          -> "Int"
+    Int64                        -> "Int64"
+    Float                        -> "Float"
+    String                       -> "String"
+    Any                          -> "Dynamic"
+    List(item)                   -> generic_name("List", [item])
+    Option(inner)                -> generic_name("Option", [inner])
+    Map(key:, value:)            -> generic_name("Map", [key, value])
     Record(name:, fields: _)     -> name
     Variants(name:, variants: _) -> name
     Ref(name)                    -> name
