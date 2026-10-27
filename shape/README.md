@@ -37,7 +37,7 @@ Shape.field_names(Shape.of_parameter(show_member)) # ["team_id", "member_id"]
 - 型パラメータを持つ型の名前には型引数を入れる．`Shape.generic_name("Page", [Shaped.shape(item)])` は `"Page[Member]"`．`Page[Member]` と `Page[Team]` が別の名前になるので，JSON Schema の `$defs` でもぶつからない
 - 作る関数で中身を確かめている opaque type は，`Named(name: "Quantity", shape: ...)` で名前と中身の形を出す．JSON Schema では `$defs` に 1 回だけ定義される
 - 確かめられる条件（範囲，長さ，個数）は `Shape.Rule` で書く（下）．確かめられない注記は関数で付ける：`description`，`pattern`，`format`．それ以外のキーは `annotate` で付け，読む側は知らないキーをそのまま通す
-- variant の名前は `Dynamic` の variant（`Bool`，`Text` など）と重ならないようにしてある．両方を 1 つのモジュールに import できる
+- variant の名前は説明する型の名前（`Int`，`List`）で，モジュールで修飾して `Shape.Int` と書く．`Bool` は `Dynamic` の variant にもあるので，修飾なしで両方を import すると，どちらかを修飾することになる
 - パッケージを `shaped` にしなかったのは，モジュール `Shaped` と trait `Shaped` が `.` の左でぶつかる（E0218）ため
 
 ## Rule
@@ -45,7 +45,7 @@ Shape.field_names(Shape.of_parameter(show_member)) # ["team_id", "member_id"]
 `Shape.Rule` は，値の条件と，それを外に向けて説明する注記を 1 つの値にまとめる．作る関数と Shape が同じ list を読むので，確かめていることと JSON Schema に書かれることがずれない．
 
 ```emela
-import Shape.{Shaped, Named, IntShape}
+import Shape.{Shaped, Named}
 import Shape.Rule.{Rule}
 
 const QUANTITY: List[Rule[Int]] = [Rule.at_least(1), Rule.at_most(99)]
@@ -61,7 +61,7 @@ pub fn from_int(n: Int) -> Quantity fails InvalidQuantity {
 }
 
 impl Quantity: Shaped {
-  fn shape_in(proxy, visiting) { Named(name: "Quantity", shape: IntShape |> Rule.annotate(QUANTITY)) }
+  fn shape_in(proxy, visiting) { Named(name: "Quantity", shape: Shape.Int |> Rule.annotate(QUANTITY)) }
 }
 ```
 

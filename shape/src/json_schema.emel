@@ -20,15 +20,15 @@ import Lib.{
   NoFields,
   PositionalFields,
   NamedFields,
-  BoolShape,
-  IntShape,
-  Int64Shape,
-  FloatShape,
-  StringShape,
-  DynamicShape,
-  ListOf,
-  OptionOf,
-  MapOf,
+  Bool,
+  Int,
+  Int64,
+  Float,
+  String,
+  Any,
+  List,
+  Option,
+  Map,
   Record,
   Variants,
   Ref,
@@ -55,21 +55,21 @@ pub fn document(shape: Shape) -> Dynamic {
 ## The schema of `shape` and the definitions it adds to `defs`.
 fn schema(shape: Shape, defs: List[(String, Dynamic)]) -> (Dynamic, List[(String, Dynamic)]) {
   shape match {
-    BoolShape                  -> (of_type("boolean"), defs)
-    IntShape                   -> (of_type("integer"), defs)
-    Int64Shape                 -> (of_type("integer"), defs)
-    FloatShape                 -> (of_type("number"), defs)
-    StringShape                -> (of_type("string"), defs)
-    DynamicShape               -> (Dynamic.object([]), defs)
-    ListOf(item) -> {
+    Bool                       -> (of_type("boolean"), defs)
+    Int                        -> (of_type("integer"), defs)
+    Int64                      -> (of_type("integer"), defs)
+    Float                      -> (of_type("number"), defs)
+    String                     -> (of_type("string"), defs)
+    Any                        -> (Dynamic.object([]), defs)
+    List(item) -> {
       (items, defs) = schema(item, defs)
       (Dynamic.object([("type", Text("array")), ("items", items)]), defs)
     }
-    OptionOf(inner) -> {
+    Option(inner) -> {
       (s, defs) = schema(inner, defs)
       (Dynamic.object([("anyOf", Items([s, of_type("null")]))]), defs)
     }
-    MapOf(key: _, value:) -> {
+    Map(key: _, value:) -> {
       (values, defs) = schema(value, defs)
       (Dynamic.object([("type", Text("object")), ("additionalProperties", values)]), defs)
     }
@@ -166,8 +166,8 @@ fn all[A, B](
 ## Whether a field of this shape may be missing.
 fn optional(shape: Shape) -> Bool {
   Lib.strip(shape) match {
-    OptionOf(_) -> True
-    _           -> False
+    Option(_) -> True
+    _         -> False
   }
 }
 
