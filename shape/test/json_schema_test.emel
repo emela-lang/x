@@ -125,3 +125,11 @@ fn lengths_of_a_list_are_counts_of_items() {
   assert schema_text(shape)
     == "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"items\":{\"type\":\"integer\"},\"maxItems\":5,\"minItems\":1,\"type\":\"array\",\"x-note\":\"kept\"}"
 }
+
+@test
+fn types_that_refer_to_each_other_are_both_defined() {
+  member = Record(name: "Member", fields: [Field(name: "team", shape: OptionOf(Ref("Team")))])
+  team = Record(name: "Team", fields: [Field(name: "lead", shape: member)])
+  assert schema_text(team)
+    == "{\"$defs\":{\"Member\":{\"properties\":{\"team\":{\"anyOf\":[{\"$ref\":\"#/$defs/Team\"},{\"type\":\"null\"}]}},\"required\":[],\"type\":\"object\"},\"Team\":{\"properties\":{\"lead\":{\"$ref\":\"#/$defs/Member\"}},\"required\":[\"lead\"],\"type\":\"object\"}},\"$ref\":\"#/$defs/Team\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"
+}
