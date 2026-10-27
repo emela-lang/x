@@ -1,7 +1,7 @@
 import Dynamic.{Number}
 import Dynamic.Number
 import Rule.{Rule, Broken, AllBroken}
-import Lib.{IntShape, StringShape, ListOf, Annotated, Named, Record, Field}
+import Lib.{Int, String, List, Annotated, Named, Record, Field}
 import JsonSchema
 import Json
 
@@ -91,9 +91,9 @@ fn items_are_counted() {
 
 @test
 fn the_shape_carries_the_notes_of_the_rules() {
-  assert Rule.annotate(IntShape, QUANTITY)
-    == Annotated(shape: IntShape, notes: [("minimum", number(1)), ("maximum", number(99))])
-  assert Rule.annotate(IntShape, [even()]) == IntShape
+  assert Rule.annotate(Int, QUANTITY)
+    == Annotated(shape: Int, notes: [("minimum", number(1)), ("maximum", number(99))])
+  assert Rule.annotate(Int, [even()]) == Int
 }
 
 @test
@@ -102,12 +102,12 @@ fn json_schema_reads_the_same_rules() {
   shape = Record(
     name: "Line",
     fields: [
-      Field(name: "name", shape: StringShape |> Rule.annotate(name_rules)),
+      Field(name: "name", shape: String |> Rule.annotate(name_rules)),
       Field(
         name: "quantity",
-        shape: Named(name: "Quantity", shape: IntShape |> Rule.annotate(QUANTITY)),
+        shape: Named(name: "Quantity", shape: Int |> Rule.annotate(QUANTITY)),
       ),
-      Field(name: "tags", shape: ListOf(StringShape) |> Rule.annotate([Rule.max_items(3)])),
+      Field(name: "tags", shape: List(String) |> Rule.annotate([Rule.max_items(3)])),
     ],
   )
   assert Json.to_string(JsonSchema.document(shape))
