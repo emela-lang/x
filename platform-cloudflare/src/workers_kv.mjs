@@ -1,4 +1,4 @@
-// Host functions for WorkerKv (kv.emel). Each takes the name of the KV namespace's binding first.
+// Host functions for CloudflareKv (workers_kv.emel). Each takes the name of the KV namespace's binding first.
 
 import { env } from "cloudflare:workers";
 

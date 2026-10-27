@@ -4,7 +4,7 @@
 #   GET /hello/<who> -> hello, <who>
 #   GET /boom        -> a defect, answered with 500 by `Http.serve`
 
-import Worker.{WorkerPlatform}
+import Platform.{CloudflarePlatform}
 import Kv.{Kv}
 import Std.Console.{Console}
 import Std.Env.{Env}
@@ -14,7 +14,7 @@ import Std.Http.Response.{Response}
 
 @entry(Http.serve)
 pub fn app(request: Request) -> Response {
-  with WorkerPlatform { route(request) }
+  with CloudflarePlatform { route(request) }
 }
 
 fn route(request: Request) -> Response use { Console, Env, Kv } {

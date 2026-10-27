@@ -1,0 +1,9 @@
+# Written by `emela pome`. Do not edit.
+version = 1
+
+[[pome]]
+path = "github.com/emela-lang/x/kv"
+version = "v0.1.0"
+commit = "ff8450ad6e207117bef92fae8c6c5ab284ebbfb0"
+hash = "h1:sUeoNKzOpX8zFIfNotEbnb/kpN7XQH1fxYgJoL+gyoA="
+manifest = "h1:+Hn6AXsZKtVOLhBHAtP+9pK2x0kUodp26XhdfoBs+Bw="
