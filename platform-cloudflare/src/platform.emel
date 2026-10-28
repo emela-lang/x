@@ -22,6 +22,7 @@ import Std.Env.{Env}
 import Std.Http.{SystemHttp}
 import Std.Random.{SystemRandom}
 import WorkersKv.{CloudflareKv}
+import D1Database.{CloudflareD1}
 
 @external(js, "./platform.mjs", "hasVar")
 fn var_has(name: String) -> Bool
@@ -37,7 +38,8 @@ pub handler CloudflareEnv: Env {
   }
 }
 
-## The handlers that work on Workers, with CloudflareKv on the KV namespace bound as `KV`.
+## The handlers that work on Workers, with CloudflareKv on the KV namespace bound as `KV` and
+## CloudflareD1 on the D1 database bound as `DB`.
 ## `Std.Platform` also has SystemFileSystem and reads `process.env`, which Workers does not have.
 pub layer CloudflarePlatform {
   SystemConsole
@@ -46,4 +48,5 @@ pub layer CloudflarePlatform {
   CloudflareEnv
   SystemHttp
   CloudflareKv(binding: "KV")
+  CloudflareD1(binding: "DB")
 }

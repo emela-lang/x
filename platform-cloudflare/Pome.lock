@@ -2,8 +2,29 @@
 version = 1
 
 [[pome]]
+path = "github.com/emela-lang/x/dynamic"
+version = "v0.4.0"
+commit = "cf08f6f630c7f6ead89d5295016d5b62849f209a"
+hash = "h1:Vi6p6OkDEgzY2asaOldDeEg+NUT7qkwldr1ydqhu/Tk="
+manifest = "h1:MgKNuMP78Uoym3tnN2ltmSLCPHocqIAA1EQwVNVGz2A="
+
+[[pome]]
+path = "github.com/emela-lang/x/json"
+version = "v0.2.0"
+commit = "1a65fcc194990584aa433b199ebaa82c55def3e0"
+hash = "h1:uuNUordYIJErq8cdvXcaOglm/kiotDRghYPVOcqVP00="
+manifest = "h1:dHafuwtfKqdHoMfsOyCL8oVFC43wXbCQbqWv1doG9E8="
+
+[[pome]]
 path = "github.com/emela-lang/x/kv"
 version = "v0.1.0"
 commit = "ff8450ad6e207117bef92fae8c6c5ab284ebbfb0"
 hash = "h1:sUeoNKzOpX8zFIfNotEbnb/kpN7XQH1fxYgJoL+gyoA="
 manifest = "h1:+Hn6AXsZKtVOLhBHAtP+9pK2x0kUodp26XhdfoBs+Bw="
+
+[[pome]]
+path = "github.com/emela-lang/x/sql"
+version = "v0.1.0"
+commit = "3c7505d1f5b21e07035994915fd0f12348e985aa"
+hash = "h1:9QLqaCQi5CHlPLGBmLJsOgskHRJFHeRLp91gS+faabo="
+manifest = "h1:cICCo3UtEye92cEdrHKboGevXtmz1KhHQRtqQGFf6ug="

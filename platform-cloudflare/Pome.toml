@@ -1,9 +1,12 @@
 [pome]
 name = "github.com/emela-lang/x/platform-cloudflare"
-version = "0.5.0"
+version = "0.6.0"
 emela = "0.25.0"
 module = "Cloudflare"
 targets = ["js"]
 
 [dependencies]
 "github.com/emela-lang/x/kv" = "v0.1.0"
+"github.com/emela-lang/x/sql" = "v0.1.0"
+"github.com/emela-lang/x/dynamic" = "v0.4.0"
+"github.com/emela-lang/x/json" = "v0.2.0"
