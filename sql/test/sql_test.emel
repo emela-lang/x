@@ -226,3 +226,18 @@ fn a_defect_in_a_transaction_rolls_back_and_goes_on() {
   assert kind == Some(Die)
   assert after.sent == [Began, ran("insert a"), RolledBack]
 }
+
+@test
+fn scalar_params_turn_items_and_fields_into_json_text() {
+  statement = Statement(
+    text: "insert into todos (tags, meta, done, title) values (json(?), json(?), ?, ?)",
+    params: [
+      Items([Text("a"), Text("b")]),
+      Dynamic.object([("by", Text("me"))]),
+      Bool(True),
+      Text("[not json]"),
+    ],
+  )
+  assert Lib.scalar_params(statement)
+    == [Text("[\"a\",\"b\"]"), Text("{\"by\":\"me\"}"), Bool(True), Text("[not json]")]
+}
