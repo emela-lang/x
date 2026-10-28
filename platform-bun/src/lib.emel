@@ -1,0 +1,2 @@
+# Handlers on what Bun has built in, for an Emela app run by Bun. `Std.Platform` already works on
+# Bun; this Pome adds the handlers of x/sql on `bun:sqlite` (`Bun.Sqlite`).

@@ -2,3 +2,4 @@ target/
 .wrangler/
 node_modules/
 .fallow/
+*.db

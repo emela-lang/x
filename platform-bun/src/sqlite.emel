@@ -1,0 +1,137 @@
+# SQLite on `bun:sqlite` as handlers of Sql and Transaction (x/sql).
+#
+# ```emela
+# @entry(Http.serve)
+# pub fn app(request: Request) -> Response {
+#   with Platform, BunSqlite(path: "app.db"), BunSqliteTransaction { route(request) }
+# }
+# ```
+#
+# A `with` opens its own connection and closes it when it ends, so each launch of an HTTP service
+# has its own: a transaction of one request never takes in the statements of another, even while
+# it waits for something else. `:memory:` is a new, empty database for each `with`, which suits
+# tests.
+#
+# Calls to SQLite do not suspend: `bun:sqlite` runs them on the spot. A write while another
+# connection holds a transaction open fails at once with SqlError (`database is locked`); keep
+# transactions short, and do not wait for other things inside one.
+
+import Dynamic.{Dynamic, DecodeError, Text, Items, Fields}
+import Json.{SyntaxError}
+import Sql.{Sql, Transaction, SqlError, Statement}
+
+## A connection to a database file.
+@external
+type Connection
+
+## The outcome of a call on the host: whether SQLite succeeded, and the result as JSON or the
+## message of its error.
+@external
+type HostOutcome
+
+@external(js, "./sqlite.mjs", "open")
+fn sqlite_open(path: String) -> Connection use {}
+
+@external(js, "./sqlite.mjs", "close")
+fn sqlite_close(db: Connection) -> () use {}
+
+@external(js, "./sqlite.mjs", "query")
+fn sqlite_query(db: Connection, statement: String) -> HostOutcome use {}
+
+@external(js, "./sqlite.mjs", "execute")
+fn sqlite_execute(db: Connection, statement: String) -> HostOutcome use {}
+
+@external(js, "./sqlite.mjs", "batch")
+fn sqlite_batch(db: Connection, statements: String) -> HostOutcome use {}
+
+@external(js, "./sqlite.mjs", "ok")
+fn outcome_ok(o: HostOutcome) -> Bool use {}
+
+@external(js, "./sqlite.mjs", "result")
+fn outcome_result(o: HostOutcome) -> String use {}
+
+## The database in the file `path` (created if it does not exist), or a new one in memory for
+## `:memory:`. The connection is opened by the `with` and closed when it ends; an open transaction
+## is rolled back then.
+##
+## Values are as x/sql says for a database without boolean and JSON types. Integers come back
+## with every digit; an integer parameter beyond 2^53 loses digits on the way. A row with a BLOB
+## fails with SqlError.
+pub handler BunSqlite(db: Connection): Sql {
+  init(path: String) {
+    BunSqlite(db: sqlite_open(path))
+  }
+  release {
+    sqlite_close(self.db)
+  }
+  suspend fn query(statement, resume) {
+    resume(rows(result(sqlite_query(self.db, Json.to_string(encode(statement))))))
+  }
+  suspend fn execute(statement, resume) {
+    resume(count(result(sqlite_execute(self.db, Json.to_string(encode(statement))))))
+  }
+  suspend fn batch(statements, resume) {
+    json = Json.to_string(Items(List.map(statements, encode)))
+    resume(List.map(rows(result(sqlite_batch(self.db, json))), count))
+  }
+}
+
+## Transactions on the BunSqlite listed before it (`with BunSqlite(path: ...), BunSqliteTransaction`),
+## by the statements `begin`, `commit` and `rollback`. SQLite refuses `begin` inside an open
+## transaction, so `Sql.transaction` inside another fails with SqlError.
+pub handler BunSqliteTransaction: Transaction {
+  suspend fn begin(resume) {
+    run("begin")
+    resume(())
+  }
+  suspend fn commit(resume) {
+    run("commit")
+    resume(())
+  }
+  suspend fn rollback(resume) {
+    run("rollback")
+    resume(())
+  }
+}
+
+fn run(text: String) -> () fails SqlError use { Sql } {
+  (use Sql).execute(Statement(text:, params: []))
+  ()
+}
+
+## A statement as `bun:sqlite` binds it: Items and Fields become JSON text.
+fn encode(statement: Statement) -> Dynamic {
+  params = List.map(statement.params, fn(p) {
+    p match {
+      Items(_)  -> Text(Json.to_string(p))
+      Fields(_) -> Text(Json.to_string(p))
+      _         -> p
+    }
+  })
+  Dynamic.object([("text", Text(statement.text)), ("params", Items(params))])
+}
+
+fn result(o: HostOutcome) -> Dynamic fails SqlError {
+  if outcome_ok(o) {
+    Json.parse(outcome_result(o)) escape {
+      SyntaxError(message:, offset: _) -> panic(
+        "bun:sqlite gave a result that is not JSON: #{message}",
+      )
+    }
+  } else {
+    fail SqlError(message: outcome_result(o))
+  }
+}
+
+fn rows(d: Dynamic) -> List[Dynamic] {
+  d match {
+    Items(rows) -> rows
+    _           -> panic("bun:sqlite gave rows that are not a list")
+  }
+}
+
+fn count(d: Dynamic) -> Int {
+  Dynamic.int(d) escape {
+    DecodeError(..) -> panic("bun:sqlite gave a count that is not an Int")
+  }
+}

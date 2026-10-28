@@ -1,0 +1,51 @@
+# A sample HTTP service on Bun: keeps notes in SQLite. Run with `EMELA_NODE=bun emela run`.
+#
+#   GET /notes  -> the notes, one per line
+#   POST /notes -> adds the body as a note
+
+import Std.Http
+import Std.Http.Request.{Request, Get, Post}
+import Std.Http.Response.{Response}
+import Std.Platform.{Platform}
+import Dynamic.{Dynamic, Decode, DecodeErrors, Text}
+import Sql
+import Sql.{Sql, SqlError}
+import Sqlite.{BunSqlite}
+
+@entry(Http.serve)
+pub fn app(request: Request) -> Response {
+  with Platform, BunSqlite(path: "notes.db") {
+    answer(fn() { route(request) })
+  }
+}
+
+fn route(request: Request) -> Response fails SqlError | DecodeErrors use { Sql } {
+  Sql.execute("create table if not exists notes (id integer primary key, body text not null)", [])
+  (request.method, Request.segments(request)) match {
+    (Get, ["notes"]) -> {
+      found: List[Note] = Sql.all("select body from notes order by id", [])
+      Response.new(200, List.map(found, fn(n) { "#{n.body}\n" }) |> String.join(""))
+    }
+    (Post, ["notes"]) -> {
+      Sql.execute("insert into notes (body) values (?)", [Text(request.body)])
+      Response.new(201, "added\n")
+    }
+    _ -> Response.new(404, "not found\n")
+  }
+}
+
+type Note(body: String)
+
+# What `derive Decode` is meant to generate.
+impl Note: Decode {
+  fn from_dynamic(d) {
+    Note(body: Dynamic.field(d, "body", Decode.from_dynamic))
+  }
+}
+
+fn answer(run: fn() -> Response fails SqlError | DecodeErrors use { Sql }) -> Response use { Sql } {
+  run() escape {
+    SqlError(message:) -> Response.new(500, "database: #{message}\n")
+    DecodeErrors(..)   -> Response.new(500, "a row could not be read\n")
+  }
+}
