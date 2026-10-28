@@ -22,6 +22,8 @@
 # - Null, Bool, Number and Text are passed as they are
 # - Items and Fields are passed as JSON text, for the database's JSON functions
 #
+# A handler gives the parameters to the database as `scalar_params` has them.
+#
 # A row is a Dynamic object from column names to values:
 #
 # - NULL is Null, an integer, a real or a decimal is Number, and text is Text
@@ -33,7 +35,8 @@
 #
 # What a handler does beyond this is in its documentation.
 
-import Dynamic.{Dynamic, Decode, DecodeErrors}
+import Dynamic.{Dynamic, Decode, DecodeErrors, Text, Items, Fields}
+import Json
 import Std.Cause
 import Std.Fiber.{Success, Failure}
 import Std.State.{State}
@@ -79,6 +82,18 @@ pub fn first[A: Decode](text: String, params: List[Dynamic]) -> Option[A]
 ## Runs `text`, and gives the number of rows it changed.
 pub fn execute(text: String, params: List[Dynamic]) -> Int fails SqlError use { Sql } {
   (use Sql).execute(Statement(text:, params:))
+}
+
+## The parameters of `statement` as a handler gives them to the database: Items and Fields as
+## JSON text, and the others as they are.
+pub fn scalar_params(statement: Statement) -> List[Dynamic] {
+  List.map(statement.params, fn(p) {
+    p match {
+      Items(_)  -> Text(Json.to_string(p))
+      Fields(_) -> Text(Json.to_string(p))
+      _         -> p
+    }
+  })
 }
 
 ## Runs `body` in a transaction: commits if it ends normally, and rolls back if it fails or has a
