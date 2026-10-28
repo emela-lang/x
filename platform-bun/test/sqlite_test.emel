@@ -1,0 +1,151 @@
+# Run with Bun: `EMELA_NODE=bun emela test`.
+
+import Dynamic.{Dynamic, Decode, DecodeErrors, Text, Bool, Items}
+import Dynamic.Number
+import Sql
+import Sql.{Sql, SqlError, Statement}
+import Sqlite.{BunSqlite, BunSqliteTransaction}
+
+type Note(id: Int, body: String) derive Eq
+
+# What `derive Decode` is meant to generate.
+impl Note: Decode {
+  fn from_dynamic(d) {
+    Note(
+      id: Dynamic.field(d, "id", Decode.from_dynamic),
+      body: Dynamic.field(d, "body", Decode.from_dynamic),
+    )
+  }
+}
+
+error Rejected(reason: String)
+
+fn int(n: Int) -> Dynamic {
+  Dynamic.Number(Number.from_int(n))
+}
+
+fn setup() -> () fails SqlError use { Sql } {
+  Sql.execute("create table notes (id integer primary key, body text not null)", [])
+  ()
+}
+
+fn bodies() -> List[String] fails SqlError | DecodeErrors use { Sql } {
+  notes: List[Note] = Sql.all("select id, body from notes order by id", [])
+  List.map(notes, fn(n) { n.body })
+}
+
+@test
+fn rows_are_written_and_read() {
+  found = with BunSqlite(path: ":memory:") {
+    setup()
+    assert Sql.execute("insert into notes (body) values (?), (?)", [Text("a"), Text("it's \"b\"")])
+      == 2
+    first: Option[Note] = Sql.first("select id, body from notes where body = ?", [Text("a")])
+    (bodies(), first)
+  }
+  assert found == (["a", "it's \"b\""], Some(Note(id: 1, body: "a")))
+}
+
+@test
+fn values_come_back_as_sqlite_keeps_them() {
+  rows = with BunSqlite(path: ":memory:") {
+    (use Sql).query(
+      Statement(
+        text: "select ? as flag, ? as tags, 1152921504606846976 as big, null as absent",
+        params: [Bool(True), Items([Text("x")])],
+      ),
+    )
+  }
+  assert rows
+    == [
+      Dynamic.object(
+        [
+          ("flag", int(1)),
+          ("tags", Text("[\"x\"]")),
+          (
+            "big",
+            Dynamic.Number(
+              Number.parse("1152921504606846976") escape { ParseError(..) -> panic("") },
+            ),
+          ),
+          ("absent", Dynamic.Null),
+        ],
+      ),
+    ]
+}
+
+@test
+fn a_refused_statement_fails_with_sqlites_message() {
+  message = with BunSqlite(path: ":memory:") {
+    Sql.execute("insert into nowhere values (1)", [])
+    ""
+  } escape {
+    SqlError(message:) -> message
+  }
+  assert message == "no such table: nowhere"
+}
+
+@test
+fn a_batch_takes_effect_together_or_not_at_all() {
+  after = with BunSqlite(path: ":memory:") {
+    setup()
+    failed = (use Sql).batch(
+      [
+        Statement(text: "insert into notes (body) values ('a')", params: []),
+        Statement(text: "insert into notes (body) values (null)", params: []),
+      ],
+    ) escape {
+      SqlError(..) -> []
+    }
+    counts = (use Sql).batch(
+      [
+        Statement(text: "insert into notes (body) values ('b')", params: []),
+        Statement(text: "insert into notes (body) values ('c')", params: []),
+      ],
+    )
+    (failed, counts, bodies())
+  }
+  assert after == ([], [1, 1], ["b", "c"])
+}
+
+@test
+fn a_transaction_commits_or_rolls_back() {
+  after = with BunSqlite(path: ":memory:"), BunSqliteTransaction {
+    setup()
+    Sql.transaction(fn() { Sql.execute("insert into notes (body) values ('kept')", []) })
+    reason = Sql.transaction(fn() {
+      Sql.execute("insert into notes (body) values ('dropped')", [])
+      fail Rejected(reason: "no")
+    }) escape {
+      Rejected(reason:) -> reason
+    }
+    (reason, bodies())
+  }
+  assert after == ("no", ["kept"])
+}
+
+@test
+fn a_transaction_does_not_nest() {
+  message = with BunSqlite(path: ":memory:"), BunSqliteTransaction {
+    Sql.transaction(fn() {
+      Sql.transaction(fn() { () })
+      ""
+    })
+  } escape {
+    SqlError(message:) -> message
+  }
+  assert message == "cannot start a transaction within a transaction"
+}
+
+@test
+fn each_with_has_its_own_memory_database() {
+  with BunSqlite(path: ":memory:") { setup() }
+  message = with BunSqlite(path: ":memory:") {
+    bodies()
+    ""
+  } escape {
+    SqlError(message:) -> message
+    DecodeErrors(..)   -> "decode"
+  }
+  assert message == "no such table: notes"
+}
