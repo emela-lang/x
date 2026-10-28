@@ -16,8 +16,9 @@
 # connection holds a transaction open fails at once with SqlError (`database is locked`); keep
 # transactions short, and do not wait for other things inside one.
 
-import Dynamic.{Dynamic, DecodeError, Text, Items, Fields}
+import Dynamic.{Dynamic, DecodeError, Text, Items}
 import Json.{SyntaxError}
+import Sql
 import Sql.{Sql, Transaction, SqlError, Statement}
 
 ## A connection to a database file.
@@ -99,16 +100,9 @@ fn run(text: String) -> () fails SqlError use { Sql } {
   ()
 }
 
-## A statement as `bun:sqlite` binds it: Items and Fields become JSON text.
+## A statement as the host reads it, with the parameters as `Sql.scalar_params` gives them.
 fn encode(statement: Statement) -> Dynamic {
-  params = List.map(statement.params, fn(p) {
-    p match {
-      Items(_)  -> Text(Json.to_string(p))
-      Fields(_) -> Text(Json.to_string(p))
-      _         -> p
-    }
-  })
-  Dynamic.object([("text", Text(statement.text)), ("params", Items(params))])
+  Dynamic.object([("text", Text(statement.text)), ("params", Items(Sql.scalar_params(statement)))])
 }
 
 fn result(o: HostOutcome) -> Dynamic fails SqlError {
