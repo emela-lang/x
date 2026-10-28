@@ -4,10 +4,11 @@
 # (`with CloudflareD1(binding: "DB")`). CloudflarePlatform has it with `DB`; to use another one,
 # list it after the layer: `with CloudflarePlatform, CloudflareD1(binding: "ANALYTICS") { ... }`.
 
-import Dynamic.{Dynamic, Number, Text, Items, Fields}
+import Dynamic.{Dynamic, Number, Text, Items}
 import Dynamic.Number
 import Dynamic.Number.{OutOfRange}
 import Json.{SyntaxError}
+import Sql
 import Sql.{Sql, SqlError, Statement}
 
 ## The outcome of a call on the host: whether D1 succeeded, and the result as JSON or the
@@ -52,16 +53,9 @@ pub handler CloudflareD1(binding: String): Sql {
   }
 }
 
-## A statement as D1 binds it: Items and Fields become JSON text.
+## A statement as the host reads it, with the parameters as `Sql.scalar_params` gives them.
 fn encode(statement: Statement) -> Dynamic {
-  params = List.map(statement.params, fn(p) {
-    p match {
-      Items(_)  -> Text(Json.to_string(p))
-      Fields(_) -> Text(Json.to_string(p))
-      _         -> p
-    }
-  })
-  Dynamic.object([("text", Text(statement.text)), ("params", Items(params))])
+  Dynamic.object([("text", Text(statement.text)), ("params", Items(Sql.scalar_params(statement)))])
 }
 
 fn result(o: HostOutcome) -> Dynamic fails SqlError {

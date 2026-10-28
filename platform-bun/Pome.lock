@@ -17,7 +17,7 @@ manifest = "h1:dHafuwtfKqdHoMfsOyCL8oVFC43wXbCQbqWv1doG9E8="
 
 [[pome]]
 path = "github.com/emela-lang/x/sql"
-version = "v0.1.0"
-commit = "3c7505d1f5b21e07035994915fd0f12348e985aa"
-hash = "h1:9QLqaCQi5CHlPLGBmLJsOgskHRJFHeRLp91gS+faabo="
-manifest = "h1:cICCo3UtEye92cEdrHKboGevXtmz1KhHQRtqQGFf6ug="
+version = "v0.2.0"
+commit = "e3abcec2e964a0c1c6195e212fd252581a49cfb6"
+hash = "h1:EukK6jtCe+GsEjf5CTa5paT7WccqhvwSNs7Zzc1yYXw="
+manifest = "h1:4zifXtNBobBzMz5IPRu2gheXreOqg2hNmVnC5grvuGQ="
