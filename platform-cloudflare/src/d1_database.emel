@@ -1,0 +1,95 @@
+# D1 as a handler of Sql (x/sql).
+#
+# CloudflareD1 uses the D1 database bound under the name it is given
+# (`with CloudflareD1(binding: "DB")`). CloudflarePlatform has it with `DB`; to use another one,
+# list it after the layer: `with CloudflarePlatform, CloudflareD1(binding: "ANALYTICS") { ... }`.
+
+import Dynamic.{Dynamic, Number, Text, Items, Fields}
+import Dynamic.Number
+import Dynamic.Number.{OutOfRange}
+import Json.{SyntaxError}
+import Sql.{Sql, SqlError, Statement}
+
+## The outcome of a call on the host: whether D1 succeeded, and the result as JSON or the
+## message of its error.
+@external
+type HostOutcome
+
+@external(js, "./d1_database.mjs", "query")
+suspend fn d1_query(binding: String, statement: String) -> HostOutcome
+
+@external(js, "./d1_database.mjs", "execute")
+suspend fn d1_execute(binding: String, statement: String) -> HostOutcome
+
+@external(js, "./d1_database.mjs", "batch")
+suspend fn d1_batch(binding: String, statements: String) -> HostOutcome
+
+@external(js, "./d1_database.mjs", "ok")
+fn outcome_ok(o: HostOutcome) -> Bool use {}
+
+@external(js, "./d1_database.mjs", "value")
+fn outcome_value(o: HostOutcome) -> String use {}
+
+## The D1 database bound as `binding` in wrangler.toml. A statement D1 refuses fails with its
+## message as SqlError; a `binding` that names no D1 database is a defect.
+##
+## D1 is SQLite: a boolean comes back as 0 or 1 and JSON as Text, and a Bool is passed as 1 or 0.
+## A number is a JavaScript number on the way, so an integer beyond 2^53 loses digits. D1 has no
+## Transaction: use `batch` for statements that must take effect together.
+pub handler CloudflareD1(binding: String): Sql {
+  init(binding: String) {
+    CloudflareD1(binding:)
+  }
+  suspend fn query(statement, resume) {
+    resume(rows(result(d1_query(self.binding, Json.to_string(encode(statement))))))
+  }
+  suspend fn execute(statement, resume) {
+    resume(count(result(d1_execute(self.binding, Json.to_string(encode(statement))))))
+  }
+  suspend fn batch(statements, resume) {
+    json = Json.to_string(Items(List.map(statements, encode)))
+    resume(counts(result(d1_batch(self.binding, json))))
+  }
+}
+
+## A statement as D1 binds it: Items and Fields become JSON text.
+fn encode(statement: Statement) -> Dynamic {
+  params = List.map(statement.params, fn(p) {
+    p match {
+      Items(_)  -> Text(Json.to_string(p))
+      Fields(_) -> Text(Json.to_string(p))
+      _         -> p
+    }
+  })
+  Dynamic.object([("text", Text(statement.text)), ("params", Items(params))])
+}
+
+fn result(o: HostOutcome) -> Dynamic fails SqlError {
+  if outcome_ok(o) {
+    Json.parse(outcome_value(o)) escape {
+      SyntaxError(message:, offset: _) -> panic("D1 gave a result that is not JSON: #{message}")
+    }
+  } else {
+    fail SqlError(message: outcome_value(o))
+  }
+}
+
+fn rows(d: Dynamic) -> List[Dynamic] {
+  d match {
+    Items(rows) -> rows
+    _           -> panic("D1 gave rows that are not a list")
+  }
+}
+
+fn count(d: Dynamic) -> Int {
+  d match {
+    Number(n) -> Number.to_int(n) escape {
+      OutOfRange(..) -> panic("D1 gave a count out of range")
+    }
+    _ -> panic("D1 gave a count that is not a number")
+  }
+}
+
+fn counts(d: Dynamic) -> List[Int] {
+  List.map(rows(d), count)
+}

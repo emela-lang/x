@@ -1,15 +1,22 @@
-# A sample Worker: counts visits in KV and greets.
+# A sample Worker: counts visits in KV, keeps notes in D1, and greets.
 #
 #   GET /            -> hello, with the visit count
 #   GET /hello/<who> -> hello, <who>
+#   GET /notes       -> the notes, one per line
+#   POST /notes      -> adds the body as a note
 #   GET /boom        -> a defect, answered with 500 by `Http.serve`
+#
+# The table of notes is made by `migrations/` (`npx wrangler d1 migrations apply DB --local`).
 
 import Platform.{CloudflarePlatform}
 import Kv.{Kv}
+import Sql
+import Sql.{Sql, SqlError}
+import Dynamic.{Dynamic, Decode, DecodeErrors, Text}
 import Std.Console.{Console}
 import Std.Env.{Env}
 import Std.Http
-import Std.Http.Request.{Request, Get}
+import Std.Http.Request.{Request, Get, Post}
 import Std.Http.Response.{Response}
 
 @entry(Http.serve)
@@ -17,7 +24,7 @@ pub fn app(request: Request) -> Response {
   with CloudflarePlatform { route(request) }
 }
 
-fn route(request: Request) -> Response use { Console, Env, Kv } {
+fn route(request: Request) -> Response use { Console, Env, Kv, Sql } {
   (use Console).print_line("#{request.method} #{request.url}")
   (request.method, Request.segments(request)) match {
     (Get, []) -> {
@@ -28,6 +35,8 @@ fn route(request: Request) -> Response use { Console, Env, Kv } {
       Response.new(200, "#{greeting} from Emela (visit ##{count + 1})\n")
     }
     (Get, ["hello", who]) -> Response.new(200, "hello, #{who}\n")
+    (Get, ["notes"])      -> answer(fn() { notes() })
+    (Post, ["notes"])     -> answer(fn() { add_note(request.body) })
     (Get, ["boom"])       -> panic("boom")
     _                     -> Response.new(404, "not found\n")
   }
@@ -35,4 +44,30 @@ fn route(request: Request) -> Response use { Console, Env, Kv } {
 
 fn parse_count(s: String) -> Option[Int] {
   Some(Int.parse(s)) escape { ParseError(_) -> None }
+}
+
+type Note(body: String)
+
+# What `derive Decode` is meant to generate.
+impl Note: Decode {
+  fn from_dynamic(d) {
+    Note(body: Dynamic.field(d, "body", Decode.from_dynamic))
+  }
+}
+
+fn notes() -> Response fails SqlError | DecodeErrors use { Sql } {
+  found: List[Note] = Sql.all("select body from notes order by id", [])
+  Response.new(200, List.map(found, fn(n) { "#{n.body}\n" }) |> String.join(""))
+}
+
+fn add_note(body: String) -> Response fails SqlError use { Sql } {
+  Sql.execute("insert into notes (body) values (?)", [Text(body)])
+  Response.new(201, "added\n")
+}
+
+fn answer(run: fn() -> Response fails SqlError | DecodeErrors use { Sql }) -> Response use { Sql } {
+  run() escape {
+    SqlError(message:) -> Response.new(500, "database: #{message}\n")
+    DecodeErrors(..)   -> Response.new(500, "a row could not be read\n")
+  }
 }
