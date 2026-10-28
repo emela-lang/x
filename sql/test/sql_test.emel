@@ -1,0 +1,228 @@
+import Std.State.{State}
+import Std.Cause
+import Std.Cause.{Die}
+import Std.Fiber.{Success, Failure}
+import Dynamic.{Dynamic, Decode, DecodeErrors, Text, Bool, Items}
+import Dynamic.Number
+import Lib.{
+  Sql,
+  SqlError,
+  TestSql,
+  TestTransaction,
+  TestDatabase,
+  Statement,
+  Sent,
+  Ran,
+  Began,
+  Committed,
+  RolledBack,
+}
+
+type TodoRow(id: Int, title: String) derive Eq
+
+# What `derive Decode` is meant to generate.
+impl TodoRow: Decode {
+  fn from_dynamic(d) {
+    TodoRow(
+      id: Dynamic.field(d, "id", Decode.from_dynamic),
+      title: Dynamic.field(d, "title", Decode.from_dynamic),
+    )
+  }
+
+  fn from_dynamic_all(d) {
+    id = Dynamic.attempt(fn() { Dynamic.field_all(d, "id", Decode.from_dynamic_all) })
+    title = Dynamic.attempt(fn() { Dynamic.field_all(d, "title", Decode.from_dynamic_all) })
+    (id, title) match {
+      (Dynamic.Decoded(id), Dynamic.Decoded(title)) -> TodoRow(id:, title:)
+      _ -> fail DecodeErrors(
+        errors: List.flatten([Dynamic.errors_of(id), Dynamic.errors_of(title)]),
+      )
+    }
+  }
+}
+
+error Rejected(reason: String)
+
+fn row(id: Int, title: String) -> Dynamic {
+  Dynamic.object([("id", Dynamic.Number(Number.from_int(id))), ("title", Text(title))])
+}
+
+fn answering(rows: List[Dynamic]) -> TestDatabase {
+  TestDatabase(respond: fn(_, _) { Some(rows) }, sent: [])
+}
+
+fn ran(text: String) -> Sent {
+  Ran(Statement(text:, params: []))
+}
+
+@test
+fn all_reads_every_row() {
+  db = answering([row(1, "a"), row(2, "b")])
+  (rows, after) = State.run(db, fn() {
+    with TestSql {
+      todos: List[TodoRow] = Lib.all("select id, title from todos where done = ?", [Bool(False)])
+      todos
+    }
+  })
+  assert rows == [TodoRow(id: 1, title: "a"), TodoRow(id: 2, title: "b")]
+  assert after.sent
+    == [Ran(Statement(text: "select id, title from todos where done = ?", params: [Bool(False)]))]
+}
+
+@test
+fn first_is_none_without_rows() {
+  (found, _) = State.run(answering([]), fn() {
+    with TestSql {
+      todo: Option[TodoRow] = Lib.first(
+        "select id, title from todos where id = ?",
+        [Dynamic.Number(Number.from_int(9))],
+      )
+      todo
+    }
+  })
+  assert found == None
+}
+
+@test
+fn a_row_of_the_wrong_shape_fails_with_every_field() {
+  bad = Dynamic.object([("id", Text("x"))])
+  (failure, _) = State.run(answering([bad]), fn() {
+    with TestSql {
+      read: List[TodoRow] = Lib.all("select * from todos", []) escape {
+        DecodeErrors(errors:) -> fail SqlError(message: "#{List.length(errors)}")
+      }
+      ""
+    } escape {
+      SqlError(message:) -> message
+    }
+  })
+  assert failure == "2"
+}
+
+@test
+fn items_are_sent_as_they_were_given() {
+  tags = Items([Text("a"), Text("b")])
+  (_, after) = State.run(answering([]), fn() {
+    with TestSql { Lib.execute("update todos set tags = json(?)", [tags]) }
+  })
+  assert after.sent == [Ran(Statement(text: "update todos set tags = json(?)", params: [tags]))]
+}
+
+@test
+fn a_statement_with_no_answer_fails() {
+  db = TestDatabase(respond: fn(_, _) { None }, sent: [])
+  (message, _) = State.run(db, fn() {
+    with TestSql {
+      Lib.execute("delete from todos", [])
+      ""
+    } escape {
+      SqlError(message:) -> message
+    }
+  })
+  assert message == "TestDatabase gave no answer to `delete from todos`"
+}
+
+@test
+fn batch_runs_in_order_and_stops_at_a_failure() {
+  db = TestDatabase(respond: fn(_, n) { if n == 1 { None } else { Some([]) } }, sent: [])
+  (_, after) = State.run(db, fn() {
+    with TestSql {
+      (use Sql).batch(
+        [
+          Statement(text: "insert a", params: []),
+          Statement(text: "insert b", params: []),
+          Statement(text: "insert c", params: []),
+        ],
+      )
+      ()
+    } escape {
+      SqlError(..) -> ()
+    }
+  })
+  assert after.sent == [ran("insert a"), ran("insert b")]
+}
+
+@test
+fn a_transaction_that_ends_commits() {
+  (n, after) = State.run(answering([]), fn() {
+    with TestSql, TestTransaction {
+      Lib.transaction(fn() {
+        Lib.execute("insert a", [])
+        Lib.execute("insert b", [])
+        2
+      })
+    }
+  })
+  assert n == 2
+  assert after.sent == [Began, ran("insert a"), ran("insert b"), Committed]
+}
+
+@test
+fn a_transaction_that_fails_rolls_back_with_the_same_failure() {
+  (reason, after) = State.run(answering([]), fn() {
+    with TestSql, TestTransaction {
+      Lib.transaction(fn() {
+        Lib.execute("insert a", [])
+        fail Rejected(reason: "full")
+      })
+    } escape {
+      Rejected(reason:)  -> reason
+      SqlError(message:) -> message
+    }
+  })
+  assert reason == "full"
+  assert after.sent == [Began, ran("insert a"), RolledBack]
+}
+
+@test
+fn a_failed_statement_rolls_back() {
+  db = TestDatabase(respond: fn(_, n) { if n == 1 { None } else { Some([]) } }, sent: [])
+  (_, after) = State.run(db, fn() {
+    with TestSql, TestTransaction {
+      Lib.transaction(fn() {
+        Lib.execute("insert a", [])
+        Lib.execute("insert b", [])
+        ()
+      })
+    } escape {
+      SqlError(..) -> ()
+    }
+  })
+  assert after.sent == [Began, ran("insert a"), ran("insert b"), RolledBack]
+}
+
+@test
+fn a_transaction_does_not_nest() {
+  (message, after) = State.run(answering([]), fn() {
+    with TestSql, TestTransaction {
+      Lib.transaction(fn() {
+        Lib.transaction(fn() { () })
+        ""
+      })
+    } escape {
+      SqlError(message:) -> message
+    }
+  })
+  assert message == "a transaction is already open"
+  assert after.sent == [Began, RolledBack]
+}
+
+@test
+fn a_defect_in_a_transaction_rolls_back_and_goes_on() {
+  (kind, after) = State.run(answering([]), fn() {
+    exit = Fiber.attempt(fn() {
+      with TestSql, TestTransaction {
+        Lib.transaction(fn() {
+          Lib.execute("insert a", [])
+          panic("broken")
+        })
+      }
+    })
+    exit match {
+      Success(_)     -> None
+      Failure(cause) -> Some(Cause.kind(cause))
+    }
+  })
+  assert kind == Some(Die)
+  assert after.sent == [Began, ran("insert a"), RolledBack]
+}

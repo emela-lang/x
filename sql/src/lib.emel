@@ -1,0 +1,196 @@
+# A SQL database as effects. The database is provided by a service or a host library, so the
+# handlers live with what they talk to (D1 in x/platform-cloudflare); this Pome has the effects,
+# the functions that read rows into types with Decode, and the test handlers.
+#
+# ```emela
+# import Sql
+# import Sql.{Sql, SqlError}
+# import Dynamic.{DecodeErrors, Text}
+#
+# fn todos(owner: String) -> List[TodoRow] fails SqlError | DecodeErrors use { Sql } {
+#   Sql.all("select id, title from todos where owner = ?", [Text(owner)])
+# }
+# ```
+#
+# Every database runs one statement at a time, and several as one atomic batch: that is Sql.
+# Keeping a transaction open while the program runs between statements is Transaction, which only
+# some databases have (D1 does not). A function that calls `transaction` uses both, so pairing it
+# with a handler of Sql alone is a compile error where the handlers are given.
+#
+# A statement's parameters are written as `?` in its text, in order, and given as Dynamic values:
+#
+# - Null, Bool, Number and Text are passed as they are
+# - Items and Fields are passed as JSON text, for the database's JSON functions
+#
+# A row is a Dynamic object from column names to values:
+#
+# - NULL is Null, an integer, a real or a decimal is Number, and text is Text
+# - A boolean is Bool, and JSON is Items or Fields, where the database has those types. A
+#   database without them (SQLite, D1) gives 0 and 1 for a boolean and Text for JSON, and takes
+#   a Bool as 1 or 0
+# - A date, a time or a UUID is Text, for Decode to read
+# - Binary data (BLOB) cannot be read or passed yet
+#
+# What a handler does beyond this is in its documentation.
+
+import Dynamic.{Dynamic, Decode, DecodeErrors}
+import Std.Cause
+import Std.Fiber.{Success, Failure}
+import Std.State.{State}
+
+## A statement and the values of its `?`, in order.
+pub type Statement(text: String, params: List[Dynamic]) derive Eq, Show
+
+## The database refused or failed a statement. `message` is the database's.
+pub error SqlError(message: String) derive Show
+
+## A SQL database.
+pub effect Sql {
+  ## The rows that `statement` gives.
+  suspend fn query(statement: Statement) -> List[Dynamic] fails SqlError
+  ## Runs `statement`, and gives the number of rows it changed.
+  suspend fn execute(statement: Statement) -> Int fails SqlError
+  ## Runs every statement in order, as one transaction: if one fails, none of them has any
+  ## effect. Gives the number of rows each changed.
+  suspend fn batch(statements: List[Statement]) -> List[Int] fails SqlError
+}
+
+## A database that keeps a transaction open between statements. Use it through `transaction`.
+pub effect Transaction {
+  suspend fn begin() -> () fails SqlError
+  suspend fn commit() -> () fails SqlError
+  suspend fn rollback() -> () fails SqlError
+}
+
+## The rows of `text` read as A.
+pub fn all[A: Decode](text: String, params: List[Dynamic]) -> List[A]
+  fails SqlError | DecodeErrors
+  use { Sql } {
+  (use Sql).query(Statement(text:, params:)) |> List.map(Decode.from_dynamic_all)
+}
+
+## The first row of `text` read as A, or `None` if it gives no rows.
+pub fn first[A: Decode](text: String, params: List[Dynamic]) -> Option[A]
+  fails SqlError | DecodeErrors
+  use { Sql } {
+  List.head((use Sql).query(Statement(text:, params:))) |> Option.map(Decode.from_dynamic_all)
+}
+
+## Runs `text`, and gives the number of rows it changed.
+pub fn execute(text: String, params: List[Dynamic]) -> Int fails SqlError use { Sql } {
+  (use Sql).execute(Statement(text:, params:))
+}
+
+## Runs `body` in a transaction: commits if it ends normally, and rolls back if it fails or has a
+## defect, which then goes on as it was. If the rollback itself fails, that SqlError is what goes
+## on. An interruption is not seen here; the handler rolls back an open transaction when it is
+## released. Transactions do not nest: what `begin` does inside another is up to the handler.
+pub fn transaction[A, E, R](body: fn() -> A fails E use { Sql, R }) -> A
+  fails SqlError | E
+  use { Sql, Transaction, R } {
+  tx = use Transaction
+  tx.begin()
+  Fiber.attempt(body) match {
+    Success(value) -> {
+      tx.commit()
+      value
+    }
+    Failure(cause) -> {
+      tx.rollback()
+      Cause.raise(cause)
+    }
+  }
+}
+
+## What happened in a TestDatabase, in order.
+pub enum Sent {
+  Ran(Statement)
+  Began
+  Committed
+  RolledBack
+} derive Eq, Show
+
+## What TestSql and TestTransaction answer. `respond` takes a statement and its count among the
+## statements (from 0), and gives the rows it gives, or `None` to fail it; `execute` answers the
+## number of rows given. `sent` has what happened, in order.
+pub type TestDatabase(respond: fn(Statement, Int) -> Option[List[Dynamic]], sent: List[Sent])
+
+## The test handler of Sql. The database is `State[TestDatabase]`, so use it inside `State.run`:
+##
+## ```emela
+## db = TestDatabase(respond: fn(s, n) { Some([]) }, sent: [])
+## (_, after) = State.run(db, fn() { with TestSql { Sql.execute("delete from todos", []) } })
+## assert after.sent == [Ran(Statement(text: "delete from todos", params: []))]
+## ```
+##
+## A statement is added to `sent` before `respond` is called, with its parameters as they were
+## given. `batch` runs its statements one by one; when one fails, `sent` keeps the statements up
+## to it, so a test can see where the batch stopped, though a real database would have none of
+## them take effect.
+pub handler TestSql: Sql {
+  suspend fn query(statement, resume) {
+    resume(run(statement))
+  }
+  suspend fn execute(statement, resume) {
+    resume(List.length(run(statement)))
+  }
+  suspend fn batch(statements, resume) {
+    resume(List.map(statements, fn(s) { List.length(run(s)) }))
+  }
+}
+
+## The test handler of Transaction, on the same `State[TestDatabase]` as TestSql
+## (`with TestSql, TestTransaction { ... }`). It adds Began, Committed and RolledBack to `sent`.
+## `begin` inside an open transaction, and `commit` or `rollback` outside one, fail with SqlError.
+pub handler TestTransaction: Transaction {
+  suspend fn begin(resume) {
+    if is_open() { fail SqlError(message: "a transaction is already open") }
+    record(Began)
+    resume(())
+  }
+  suspend fn commit(resume) {
+    if !is_open() { fail SqlError(message: "no transaction is open") }
+    record(Committed)
+    resume(())
+  }
+  suspend fn rollback(resume) {
+    if !is_open() { fail SqlError(message: "no transaction is open") }
+    record(RolledBack)
+    resume(())
+  }
+}
+
+fn run(statement: Statement) -> List[Dynamic] fails SqlError use { State[TestDatabase] } {
+  db = (use State[TestDatabase]).get()
+  n = List.length(
+    List.filter(db.sent, fn(s) {
+      s match {
+        Ran(_) -> True
+        _      -> False
+      }
+    }),
+  )
+  record(Ran(statement))
+  respond = db.respond
+  respond(statement, n) match {
+    Some(rows) -> rows
+    None       -> fail SqlError(message: "TestDatabase gave no answer to `#{statement.text}`")
+  }
+}
+
+fn record(sent: Sent) -> () use { State[TestDatabase] } {
+  (use State[TestDatabase]).update(fn(db) {
+    TestDatabase(sent: List.append(db.sent, [sent]), ..db)
+  })
+}
+
+fn is_open() -> Bool use { State[TestDatabase] } {
+  List.fold((use State[TestDatabase]).get().sent, from: False, f: fn(open, s) {
+    s match {
+      Began      -> True
+      Committed  -> False
+      RolledBack -> False
+      Ran(_)     -> open
+    }
+  })
+}
