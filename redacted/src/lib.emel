@@ -3,8 +3,21 @@
 # A Redacted can be read with `Decode` and described with `Shaped`, but has no `Encode`: what is
 # read in as a secret cannot be written out to JSON by mistake. `reveal` takes the value out.
 
+import Std.Bytes
 import Std.Map.{Map}
-import Dynamic.{Dynamic, Decode, DecodeError, DecodeErrors, Null, Bool, Number, Text, Items, Fields}
+import Dynamic.{
+  Dynamic,
+  Decode,
+  DecodeError,
+  DecodeErrors,
+  Null,
+  Bool,
+  Number,
+  Text,
+  Items,
+  Fields,
+  Binary,
+}
 import Dynamic.Number
 import Shape.{Shaped}
 
@@ -58,5 +71,6 @@ fn hide(d: Dynamic) -> Dynamic {
     Text(_)   -> Text("<redacted>")
     Items(_)  -> Items([])
     Fields(_) -> Fields(Map.empty())
+    Binary(_) -> Binary(Bytes.empty())
   }
 }

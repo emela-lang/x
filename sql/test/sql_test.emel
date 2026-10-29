@@ -1,7 +1,8 @@
 import Std.State.{State}
 import Std.Cause.{Die}
 import Std.Fiber.{Success, Failure}
-import Dynamic.{Dynamic, Decode, DecodeErrors, Text, Bool, Items}
+import Std.Bytes.{Bytes}
+import Dynamic.{Dynamic, Decode, DecodeErrors, Text, Bool, Items, Binary}
 import Dynamic.Number
 import Lib.{
   Sql,
@@ -234,4 +235,38 @@ fn scalar_params_turn_items_and_fields_into_json_text() {
   )
   assert Lib.scalar_params(statement)
     == [Text("[\"a\",\"b\"]"), Text("{\"by\":\"me\"}"), Bool(True), Text("[not json]")]
+}
+
+@test
+fn scalar_params_keep_binary_as_it_is() {
+  b = Bytes.hex("00ff")
+  statement = Statement(text: "insert into files (data) values (?)", params: [Binary(b)])
+  assert Lib.scalar_params(statement) == [Binary(b)]
+}
+
+type FileRow(name: String, data: Bytes) derive Eq
+
+impl FileRow: Decode {
+  fn from_dynamic(d) {
+    FileRow(name: d.field("name", Decode.from_dynamic), data: d.field("data", Decode.from_dynamic))
+  }
+}
+
+@test
+fn a_blob_is_passed_and_read_as_binary() {
+  b = Bytes.hex("89504e470d0a1a0a00")
+  db = TestDatabase(
+    respond: fn(s, _) {
+      Some(s.params.map(fn(p) { Dynamic.object([("name", Text("logo.png")), ("data", p)]) }))
+    },
+    sent: [],
+  )
+  (files, after) = State.run(db, fn() {
+    with TestSql {
+      found: List[FileRow] = Lib.all("select ? as data", [Binary(b)])
+      found
+    }
+  })
+  assert files == [FileRow(name: "logo.png", data: b)]
+  assert after.sent == [Ran(Statement(text: "select ? as data", params: [Binary(b)]))]
 }

@@ -1,7 +1,9 @@
-import Dynamic.{Dynamic, Null, Bool, Number, Text, Items, Fields}
+import Dynamic.{Dynamic, Null, Bool, Number, Text, Items, Fields, Binary}
+import Base64
 
 # Writes `value` without whitespace. Keys come in the order of the Map. A string escapes `"`,
-# `\` and the control characters, and keeps every other character as it is.
+# `\` and the control characters, and keeps every other character as it is. JSON has no bytes, so
+# Binary is written as a string of standard base64 with padding (RFC 4648 section 4).
 pub fn write(value: Dynamic) -> String {
   value match {
     Null      -> "null"
@@ -9,6 +11,7 @@ pub fn write(value: Dynamic) -> String {
     Number(n) -> n.to_string()
     Text(s)   -> quote(s)
     Items(xs) -> "[#{xs.map(write).join(",")}]"
+    Binary(b) -> quote(Base64.encode(b))
     Fields(m) -> {
       members = m.to_list().map(fn((key, x)) { "#{quote(key)}:#{write(x)}" })
       "{#{members.join(",")}}"
