@@ -1,0 +1,106 @@
+import Std.Env.{Env}
+import Std.FileSystem.{
+  TestFiles,
+  TestFileSystem,
+  FileAccessDenied,
+  IsADirectory,
+  InvalidText,
+  FileSystemFailure,
+}
+import Std.State.{State}
+import Lib.{TestEnv}
+import DotEnv.{DotEnv, DotEnvError}
+
+fn parse(text: String) -> List[(String, String)] {
+  DotEnv.parse(".env", text) escape {
+    DotEnvError(path: _, line:, reason:) -> panic("line #{line}: #{reason}")
+  }
+}
+
+# The line and reason `text` fails with.
+fn error_of(text: String) -> (Int, String) {
+  found: (Int, String) = {
+    _ = DotEnv.parse(".env", text)
+    (0, "")
+  } escape {
+    DotEnvError(path: _, line:, reason:) -> (line, reason)
+  }
+  found
+}
+
+@test
+fn each_line_is_a_key_and_a_value() {
+  assert parse("A=1\nB = two words \n") == [("A", "1"), ("B", "two words")]
+}
+
+@test
+fn blank_lines_and_comments_are_skipped() {
+  assert parse("# a comment\n\n  # indented\nA=1\r\n") == [("A", "1")]
+}
+
+@test
+fn export_before_the_key_is_dropped() {
+  assert parse("export A=1") == [("A", "1")]
+}
+
+@test
+fn a_comment_after_an_unquoted_value_is_dropped() {
+  assert parse("A=1 # one\nB=a#b\nC= # nothing") == [("A", "1"), ("B", "a#b"), ("C", "")]
+}
+
+@test
+fn a_double_quoted_value_reads_escapes() {
+  assert parse("A=\"x # y\"  # c\nB=\"line\\nnext \\\"q\\\" \\\\\"")
+    == [("A", "x # y"), ("B", "line\nnext \"q\" \\")]
+}
+
+@test
+fn a_single_quoted_value_is_taken_as_written() {
+  assert parse("A='x \\n # y'") == [("A", "x \\n # y")]
+}
+
+@test
+fn an_equals_sign_in_the_value_is_kept() {
+  assert parse("URL=postgres://u:p@h/db?a=b") == [("URL", "postgres://u:p@h/db?a=b")]
+}
+
+@test
+fn a_line_that_does_not_read_tells_its_number_but_not_its_text() {
+  assert error_of("A=1\nsecret") == (2, "no `=` after the key")
+  assert error_of("1A=x") == (1, "the key is not a name of letters, digits and `_`")
+  assert error_of("A=\"open") == (1, "the `\"` is not closed")
+  assert error_of("A='open") == (1, "the `'` is not closed")
+  assert error_of("A=\"x\" y") == (1, "text after the closing quote")
+}
+
+const FILES: TestFiles = TestFiles(files: [(".env", "A=from file\nB=from file\n")], directories: [])
+
+fn get_all(env: List[(String, String)], files: TestFiles) -> List[Option[String]] {
+  (values, _) = State.run(files, fn() {
+    with TestEnv(vars: env) {
+      with TestFileSystem, DotEnv(path: ".env") {
+        e = use Env
+        [e.get("A"), e.get("B"), e.get("C")]
+      }
+    }
+  }) escape {
+    DotEnvError(..)       -> panic("DotEnvError")
+    FileAccessDenied(..)  -> panic("FileAccessDenied")
+    IsADirectory(..)      -> panic("IsADirectory")
+    InvalidText(..)       -> panic("InvalidText")
+    FileSystemFailure(..) -> panic("FileSystemFailure")
+  }
+  values
+}
+
+@test
+fn the_environment_wins_over_the_file() {
+  assert get_all([("A", "from env"), ("C", "only env")], FILES)
+    == [Some("from env"), Some("from file"), Some("only env")]
+}
+
+@test
+fn a_missing_file_is_empty() {
+  assert get_all([("A", "from env")], TestFiles(files: [], directories: []))
+    == [Some("from env"), None, None]
+}

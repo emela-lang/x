@@ -1,0 +1,190 @@
+# Env from a `.env` file, under the environment of the process.
+#
+# ```emela
+# import Std.Platform.{Platform}
+# import Config.DotEnv.{DotEnv}
+#
+# with Platform {
+#   with DotEnv(path: ".env") { Config.load("APP_") }
+# }
+# ```
+#
+# The Env under it comes from an outer `with`: an Env listed in the same `with` is not seen.
+# A variable set in the environment wins; the file only fills in the ones that are not set. A
+# missing file is read as empty, so the same program runs where the environment has everything.
+#
+# The file has one `KEY=VALUE` on each line:
+#
+# - blank lines and lines starting with `#` are skipped, and `export ` before the key is dropped
+# - an unquoted value is trimmed, and ends before a ` #` comment
+# - in `"..."`, `\n`, `\r`, `\t`, `\"` and `\\` are escapes; `'...'` is taken as written. A comment
+#   may follow the closing quote. A quoted value stays on one line
+# - a key set twice takes the later value. `${NAME}` is not expanded
+#
+# A line that does not read fails with DotEnvError, which tells the line but not its text: the
+# text may hold a secret.
+
+import Std.Env.{Env}
+import Std.FileSystem.{FileSystem, FileNotFound}
+import Std.Map.{Map}
+
+## A line of the file at `path` that does not read. `line` counts from 1.
+pub error DotEnvError(path: String, line: Int, reason: String) derive Show
+
+## The variables of the file at `path`, read when the `with` is entered, under the outer Env.
+pub handler DotEnv(vars: Map[String, String]): Env {
+  init(path: String) {
+    text = (use FileSystem).read_text(path) escape {
+      FileNotFound(..) -> ""
+    }
+    DotEnv(vars: Map.from_list(parse(path, text)))
+  }
+  fn get(name) {
+    (use Env).get(name) match {
+      Some(value) -> Some(value)
+      None        -> Map.get(self.vars, name)
+    }
+  }
+}
+
+## The pairs of `text`, the contents of a `.env` file, in the order they are written. `path` is
+## only for the error.
+pub fn parse(path: String, text: String) -> List[(String, String)] fails DotEnvError {
+  String.split(text, "\n")
+    |> List.enumerate()
+    |> List.filter_map(fn((i, raw)) {
+      line(raw) escape {
+        Invalid(reason:) -> fail DotEnvError(path:, line: i + 1, reason:)
+      }
+    })
+}
+
+error Invalid(reason: String)
+
+fn line(raw: String) -> Option[(String, String)] fails Invalid {
+  trimmed = String.trim(raw)
+  if trimmed == "" || String.starts_with(trimmed, "#") {
+    None
+  } else {
+    chars = String.chars(trimmed)
+    after_export = chars match {
+      ["e", "x", "p", "o", "r", "t", " ", ..rest] -> rest
+      _                                           -> chars
+    }
+    (key, after_key) = split_at(after_export, "=")
+    name = String.trim(String.concat(key))
+    after_key match {
+      None -> fail Invalid(reason: "no `=` after the key")
+      Some(rest) -> if is_name(name) {
+        Some((name, value(rest)))
+      } else {
+        fail Invalid(reason: "the key is not a name of letters, digits and `_`")
+      }
+    }
+  }
+}
+
+# The characters before the first `sep`, and those after it if there is one.
+fn split_at(chars: List[String], sep: String) -> (List[String], Option[List[String]]) {
+  chars match {
+    []                      -> ([], None)
+    [c, ..rest] if c == sep -> ([], Some(rest))
+    [c, ..rest] -> {
+      (before, after) = split_at(rest, sep)
+      ([c, ..before], after)
+    }
+  }
+}
+
+fn is_name(name: String) -> Bool {
+  String.chars(name) match {
+    [] -> False
+    [first, ..rest] -> !is_digit(first)
+      && List.all([first, ..rest], fn(c) { is_digit(c) || is_letter(c) || c == "_" })
+  }
+}
+
+fn is_digit(c: String) -> Bool {
+  String.code_points(c) match {
+    [n] -> n >= 48 && n <= 57
+    _   -> False
+  }
+}
+
+fn is_letter(c: String) -> Bool {
+  String.code_points(c) match {
+    [n] -> (n >= 65 && n <= 90) || (n >= 97 && n <= 122)
+    _   -> False
+  }
+}
+
+fn value(chars: List[String]) -> String fails Invalid {
+  skip_spaces(chars) match {
+    ["\"", ..rest] -> {
+      (text, after) = double_quoted(rest)
+      trailing(after)
+      text
+    }
+    ["'", ..rest] -> {
+      (text, after) = split_at(rest, "'")
+      after match {
+        Some(after) -> {
+          trailing(after)
+          String.concat(text)
+        }
+        None -> fail Invalid(reason: "the `'` is not closed")
+      }
+    }
+    ["#", ..] -> ""
+    unquoted  -> String.trim(String.concat(before_comment(unquoted)))
+  }
+}
+
+fn skip_spaces(chars: List[String]) -> List[String] {
+  chars match {
+    [c, ..rest] if c == " " || c == "\t" -> skip_spaces(rest)
+    _                                    -> chars
+  }
+}
+
+# The text up to the closing `"`, with escapes read, and the characters after it.
+fn double_quoted(chars: List[String]) -> (String, List[String]) fails Invalid {
+  chars match {
+    []             -> fail Invalid(reason: "the `\"` is not closed")
+    ["\"", ..rest] -> ("", rest)
+    ["\\", c, ..rest] -> {
+      escaped = c match {
+        "n"  -> "\n"
+        "r"  -> "\r"
+        "t"  -> "\t"
+        "\"" -> "\""
+        "\\" -> "\\"
+        _    -> "\\#{c}"
+      }
+      (text, after) = double_quoted(rest)
+      ("#{escaped}#{text}", after)
+    }
+    [c, ..rest] -> {
+      (text, after) = double_quoted(rest)
+      ("#{c}#{text}", after)
+    }
+  }
+}
+
+# What may follow a closing quote: spaces, then nothing or a comment.
+fn trailing(chars: List[String]) -> () fails Invalid {
+  skip_spaces(chars) match {
+    []        -> ()
+    ["#", ..] -> ()
+    _         -> fail Invalid(reason: "text after the closing quote")
+  }
+}
+
+# An unquoted value without its comment: a `#` after a space or a tab starts one.
+fn before_comment(chars: List[String]) -> List[String] {
+  chars match {
+    []                                    -> []
+    [c, "#", ..] if c == " " || c == "\t" -> []
+    [c, ..rest]                           -> [c, ..before_comment(rest)]
+  }
+}

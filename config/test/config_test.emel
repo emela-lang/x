@@ -1,0 +1,208 @@
+import Dynamic.{Decode, DecodeErrors, Decoded}
+import Dynamic
+import Dynamic.Number
+import Shape.{Shape, Shaped, Field, Record}
+import Redacted.{Redacted}
+import Redacted
+import Lib.{ConfigError, Problem, TestEnv}
+
+type AppConfig(
+  port: Int,
+  debug: Bool,
+  database_url: Redacted[String],
+  log_level: Option[String],
+  origins: List[String],
+)
+
+# What `derive Shaped` is meant to generate.
+impl AppConfig: Shaped {
+  fn shape_in(proxy, visiting) {
+    Shape.visit("AppConfig", visiting, fn(visiting) {
+      int: Option[Int] = None
+      bool: Option[Bool] = None
+      secret: Option[Redacted[String]] = None
+      maybe: Option[Option[String]] = None
+      strings: Option[List[String]] = None
+      Record(
+        name: "AppConfig",
+        fields: [
+          Field(
+            name: "port",
+            shape: Shaped.shape_in(int, visiting) |> Shape.description("the port to listen on"),
+          ),
+          Field(name: "debug", shape: Shaped.shape_in(bool, visiting)),
+          Field(name: "database_url", shape: Shaped.shape_in(secret, visiting)),
+          Field(name: "log_level", shape: Shaped.shape_in(maybe, visiting)),
+          Field(name: "origins", shape: Shaped.shape_in(strings, visiting)),
+        ],
+      )
+    })
+  }
+}
+
+# What `derive Decode` is meant to generate.
+impl AppConfig: Decode {
+  fn from_dynamic(d) {
+    AppConfig(
+      port: Dynamic.field(d, "port", Decode.from_dynamic),
+      debug: Dynamic.field(d, "debug", Decode.from_dynamic),
+      database_url: Dynamic.field(d, "database_url", Decode.from_dynamic),
+      log_level: Dynamic.field(d, "log_level", Decode.from_dynamic),
+      origins: Dynamic.field(d, "origins", Decode.from_dynamic),
+    )
+  }
+
+  fn from_dynamic_all(d) {
+    port = Dynamic.attempt(fn() { Dynamic.field_all(d, "port", Decode.from_dynamic_all) })
+    debug = Dynamic.attempt(fn() { Dynamic.field_all(d, "debug", Decode.from_dynamic_all) })
+    database_url = Dynamic.attempt(fn() {
+      Dynamic.field_all(d, "database_url", Decode.from_dynamic_all)
+    })
+    log_level = Dynamic.attempt(fn() { Dynamic.field_all(d, "log_level", Decode.from_dynamic_all) })
+    origins = Dynamic.attempt(fn() { Dynamic.field_all(d, "origins", Decode.from_dynamic_all) })
+    (port, debug, database_url, log_level, origins) match {
+      (
+        Decoded(port),
+        Decoded(debug),
+        Decoded(database_url),
+        Decoded(log_level),
+        Decoded(origins),
+      ) -> AppConfig(port:, debug:, database_url:, log_level:, origins:)
+      _ -> fail DecodeErrors(
+        errors: List.flatten(
+          [
+            Dynamic.errors_of(port),
+            Dynamic.errors_of(debug),
+            Dynamic.errors_of(database_url),
+            Dynamic.errors_of(log_level),
+            Dynamic.errors_of(origins),
+          ],
+        ),
+      )
+    }
+  }
+}
+
+fn load(vars: List[(String, String)]) -> AppConfig fails ConfigError {
+  with TestEnv(vars:) { Lib.load("APP_") }
+}
+
+fn num(n: Int) -> Dynamic.Dynamic {
+  Dynamic.Number(Number.from_int(n))
+}
+
+# The problems of loading `vars`: empty if it loads.
+fn problems(vars: List[(String, String)]) -> List[Problem] {
+  found: List[Problem] = {
+    _ = load(vars)
+    []
+  } escape {
+    ConfigError(problems:) -> problems
+  }
+  found
+}
+
+const GOOD: List[(String, String)] = [
+  ("APP_PORT", "8080"),
+  ("APP_DEBUG", "true"),
+  ("APP_DATABASE_URL", "postgres://u:hunter2@db/app"),
+  ("APP_ORIGINS", "https://a.example, https://b.example"),
+]
+
+@test
+fn every_field_is_read_from_its_variable() {
+  config = load(GOOD) escape {
+    ConfigError(..) -> panic("failed")
+  }
+  assert config.port == 8080
+  assert config.debug
+  assert Redacted.reveal(config.database_url) == "postgres://u:hunter2@db/app"
+  assert config.log_level == None
+  assert config.origins == ["https://a.example", "https://b.example"]
+}
+
+@test
+fn an_option_field_is_read_when_set() {
+  config = load(List.append(GOOD, [("APP_LOG_LEVEL", "debug")])) escape {
+    ConfigError(..) -> panic("failed")
+  }
+  assert config.log_level == Some("debug")
+}
+
+@test
+fn an_empty_value_counts_as_unset() {
+  config = load(List.append(GOOD, [("APP_LOG_LEVEL", "")])) escape {
+    ConfigError(..) -> panic("failed")
+  }
+  assert config.log_level == None
+  assert problems(List.append(GOOD, [("APP_PORT", "")]))
+    == [Problem(variable: "APP_PORT", message: "is not set")]
+}
+
+@test
+fn bool_takes_the_usual_words() {
+  debug = fn(text) {
+    config = load(List.append(GOOD, [("APP_DEBUG", text)])) escape {
+      ConfigError(..) -> panic("failed on #{text}")
+    }
+    config.debug
+  }
+  assert List.map(["true", "1", "YES", "on", "False", "0", "no", "OFF"], debug)
+    == [True, True, True, True, False, False, False, False]
+}
+
+@test
+fn every_problem_is_in_the_one_error() {
+  assert problems([("APP_PORT", "eighty"), ("APP_DEBUG", "maybe"), ("APP_ORIGINS", "a")])
+    == [
+      Problem(variable: "APP_PORT", message: "expected number, found text"),
+      Problem(variable: "APP_DEBUG", message: "expected bool, found text"),
+      Problem(variable: "APP_DATABASE_URL", message: "is not set"),
+    ]
+}
+
+@test
+fn text_turns_into_the_kind_of_its_field() {
+  assert Lib.from_text(Shape.Int, " 42 ") == num((42))
+  assert Lib.from_text(Shape.Int, "4x") == Dynamic.Text("4x")
+  assert Lib.from_text(Shape.Option(Shape.Bool), "Yes") == Dynamic.Bool(True)
+  assert Lib.from_text(Shape.List(Shape.Int), "1, 2") == Dynamic.Items([num((1)), num((2))])
+  assert Lib.from_text(Shape.String, " a ") == Dynamic.Text(" a ")
+}
+
+@test
+fn the_message_never_holds_a_value() {
+  message = problems([("APP_PORT", "hunter2"), ..List.drop(GOOD, 1)])
+    |> List.map(fn(p) { p.message })
+    |> String.join("; ")
+  assert message == "expected number, found text"
+  shown = Show.show(ConfigError(problems: problems([("APP_PORT", "hunter2")])))
+  assert shown
+    == "APP_PORT: expected number, found text; APP_DEBUG: is not set; APP_DATABASE_URL: is not set"
+}
+
+@test
+fn the_prefix_may_be_empty() {
+  config: AppConfig = with TestEnv(
+    vars: [("PORT", "1"), ("DEBUG", "0"), ("DATABASE_URL", "x"), ("ORIGINS", "")],
+  ) {
+    Lib.load("")
+  } escape {
+    ConfigError(..) -> panic("failed")
+  }
+  assert (config.port, config.origins) == (1, [])
+}
+
+@test
+fn variables_are_named_after_the_fields() {
+  p: Option[AppConfig] = None
+  assert Lib.variables(Shaped.shape(p), "APP_")
+    == ["APP_PORT", "APP_DEBUG", "APP_DATABASE_URL", "APP_LOG_LEVEL", "APP_ORIGINS"]
+}
+
+@test
+fn the_example_lists_every_variable() {
+  p: Option[AppConfig] = None
+  assert Lib.example(Shaped.shape(p), "APP_")
+    == "# Int: the port to listen on\nAPP_PORT=\n# Bool\nAPP_DEBUG=\n# String\nAPP_DATABASE_URL=\n# String (optional)\n# APP_LOG_LEVEL=\n# List[String]\nAPP_ORIGINS=\n"
+}
