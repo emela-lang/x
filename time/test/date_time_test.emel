@@ -1,0 +1,66 @@
+import Std.Duration.{Duration}
+import Date.{Date}
+import TimeOfDay.{TimeOfDay}
+import DateTime.{DateTime}
+
+fn at(year: Int, month: Int, day: Int, hour: Int, minute: Int) -> DateTime {
+  date = Date.from_calendar(year, month, day) |> Option.or(Date.from_unix_days(0))
+  time = TimeOfDay.from_hms(hour, minute, 0) |> Option.or(TimeOfDay.midnight())
+  DateTime(date:, time:)
+}
+
+fn parsed(s: String) -> Option[DateTime] {
+  Some(DateTime.parse(s)) escape {
+    ParseError(_) -> None
+  }
+}
+
+@test
+fn add_crosses_days() {
+  assert DateTime.add(at(2026, 12, 31, 23, 30), Duration.hours(1)) == at(2027, 1, 1, 0, 30)
+  assert DateTime.subtract(at(1970, 1, 1, 0, 0), Duration.milliseconds(1))
+    == DateTime(
+      date: Date.from_unix_days(-1),
+      time: TimeOfDay.from_milliseconds_of_day(86399999) |> Option.or(TimeOfDay.midnight()),
+    )
+  assert DateTime.since(at(2026, 10, 30, 9, 0), at(2026, 10, 29, 21, 0)) == Duration.hours(12)
+}
+
+@test
+fn calendar_steps_keep_the_time() {
+  assert DateTime.add_days(at(2026, 10, 29, 9, 0), 3) == at(2026, 11, 1, 9, 0)
+  assert DateTime.add_months(at(2026, 1, 31, 9, 0), 1) == at(2026, 2, 28, 9, 0)
+}
+
+@test
+fn compare_by_date_then_time() {
+  assert at(2026, 10, 29, 23, 59) < at(2026, 10, 30, 0, 0)
+  assert at(2026, 10, 29, 9, 0) < at(2026, 10, 29, 9, 1)
+}
+
+@test
+fn to_string_and_parse() {
+  assert DateTime.to_string(at(2026, 10, 29, 9, 5)) == "2026-10-29T09:05:00.000"
+  assert parsed("2026-10-29T09:05:00.000") == Some(at(2026, 10, 29, 9, 5))
+  assert parsed("2026-10-29t09:05") == Some(at(2026, 10, 29, 9, 5))
+  assert parsed("2026-10-29 09:05:00") == Some(at(2026, 10, 29, 9, 5))
+  assert parsed("-000001-12-31T09:05") == Some(at(-1, 12, 31, 9, 5))
+}
+
+@test
+fn parse_refuses_a_missing_part_or_an_offset() {
+  assert parsed("2026-10-29") == None
+  assert parsed("2026-10-29T") == None
+  assert parsed("T09:05") == None
+  assert parsed("2026-10-29T09:05Z") == None
+  assert parsed("2026-02-30T09:05") == None
+  assert parsed("2026-10-29T09:05T09:05") == None
+}
+
+@test
+fn parse_error_has_all_of_the_input() {
+  reported = DateTime.to_string(DateTime.parse("2026-10-29T25:00")) escape {
+    ParseError(input:) -> input
+  }
+  assert reported == "2026-10-29T25:00"
+}

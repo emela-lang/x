@@ -1,0 +1,96 @@
+# A fixed difference from UTC, as RFC 3339 writes it after a time (`+09:00`, `-05:30`, `Z`). It is
+# not a time zone: it knows nothing of daylight saving time or of the rules of a place. See the
+# README for why the IANA time zones are not here yet.
+
+import Std.Duration.{Duration}
+
+## Inside it is the number of minutes ahead of UTC (negative behind it), so Eq and Ord are by that.
+pub opaque type Offset(minutes: Int)
+  derive Eq, Ord
+
+## UTC itself (`Z`, `+00:00`).
+pub fn utc() -> Offset {
+  Offset(minutes: 0)
+}
+
+## The offset of `n` minutes ahead of UTC (behind it if negative), or `None` unless `n` is -1439
+## to 1439 (from `-23:59` to `+23:59`, what RFC 3339 can write).
+pub fn from_minutes(n: Int) -> Option[Offset] {
+  if n < -1439 || n > 1439 { None } else { Some(Offset(minutes: n)) }
+}
+
+## `from_minutes(n * 60)`: `Offset.from_hours(9)` is `+09:00`.
+pub fn from_hours(n: Int) -> Option[Offset] {
+  from_minutes(n * 60)
+}
+
+pub fn to_minutes(o: Offset) -> Int {
+  o.minutes
+}
+
+## How far ahead of UTC the local time is; negative if behind.
+pub fn to_duration(o: Offset) -> Duration {
+  Duration.minutes(Int64.from_int(o.minutes))
+}
+
+## `+HH:MM` or `-HH:MM`. UTC is `+00:00`; `OffsetDateTime.to_string` writes it as `Z` instead.
+pub fn to_string(o: Offset) -> String {
+  sign = if o.minutes < 0 { "-" } else { "+" }
+  n = Int.abs(o.minutes)
+  "#{sign}#{pad(n / 60, 2)}:#{pad(n % 60, 2)}"
+}
+
+## Reads `Z`, `z`, `+HH:MM` or `-HH:MM`, with the hours 00 to 23 and the minutes 00 to 59. `-00:00`
+## (RFC 3339's "the offset is unknown") is read as UTC. Fails with `ParseError` if anything else is
+## in `s`, including the basic form without the colon (`+0900`).
+pub fn parse(s: String) -> Offset fails ParseError {
+  offset = if s == "Z" || s == "z" {
+    Some(utc())
+  } else if String.starts_with(s, "+") {
+    after_sign(s, "+") |> Option.map(fn(n) { Offset(minutes: n) })
+  } else if String.starts_with(s, "-") {
+    after_sign(s, "-") |> Option.map(fn(n) { Offset(minutes: 0 - n) })
+  } else {
+    None
+  }
+  offset |> Option.or_fail(ParseError(input: s))
+}
+
+## Shown as `to_string` writes it (`+09:00`).
+impl Offset: Show {
+  fn show(self) { to_string(self) }
+}
+
+# The minutes of `HH:MM` after `sign`, which `s` starts with.
+fn after_sign(s: String, sign: String) -> Option[Int] {
+  String.split(s, sign) match {
+    ["", rest] -> String.split(rest, ":") match {
+      [h, m] -> (digits(h, 2), digits(m, 2)) match {
+        (Some(h), Some(m)) -> if h > 23 || m > 59 { None } else { Some(h * 60 + m) }
+        _                  -> None
+      }
+      _ -> None
+    }
+    _ -> None
+  }
+}
+
+## The value of `s` if it is exactly `width` ASCII digits.
+fn digits(s: String, width: Int) -> Option[Int] {
+  cps = String.code_points(s)
+  if List.length(cps) != width || !List.all(cps, fn(c) { c >= 48 && c <= 57 }) {
+    None
+  } else {
+    Some(List.fold(cps, from: 0, f: fn(n, c) { n * 10 + c - 48 }))
+  }
+}
+
+## Zero-pads `n` to `width` digits. `n` must be non-negative.
+fn pad(n: Int, width: Int) -> String {
+  pad_onto(Int.to_string(n), width)
+}
+
+# Digits are ASCII, so bytes count them without the grapheme tables (which target c lacks).
+fn pad_onto(s: String, width: Int) -> String {
+  if String.byte_size(s) >= width { s } else { pad_onto("0#{s}", width) }
+}

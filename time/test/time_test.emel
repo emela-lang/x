@@ -1,0 +1,140 @@
+import Std.Clock.{Clock, TestClock}
+import Std.Duration.{Duration}
+import Std.Instant.{Instant}
+import Std.State.{State}
+import Date
+import Offset.{Offset}
+import OffsetDateTime
+import Lib
+
+fn jst() -> Offset {
+  Offset.from_hours(9) |> Option.or(Offset.utc())
+}
+
+fn at(ms: Int64) -> Instant {
+  Instant.from_unix_milliseconds(ms)
+}
+
+fn instant(s: String) -> Option[Instant] {
+  Some(Lib.parse_instant(s)) escape {
+    ParseError(_) -> None
+  }
+}
+
+fn duration(s: String) -> Option[Duration] {
+  Some(Lib.parse_duration(s)) escape {
+    ParseError(_) -> None
+  }
+}
+
+fn h(n: Int) -> Duration { Duration.hours(Int64.from_int(n)) }
+fn m(n: Int) -> Duration { Duration.minutes(Int64.from_int(n)) }
+fn ms(n: Int) -> Duration { Duration.milliseconds(Int64.from_int(n)) }
+
+@test
+fn now_and_today_come_from_clock() {
+  # 2025-10-29T15:30:00Z: still the 29th in UTC, already the 30th in +09:00.
+  start = at(1761751800 * 1000)
+  ((now, utc_day, jst_day), _) = State.run(start, fn() {
+    with TestClock {
+      (
+        OffsetDateTime.to_string(Lib.now(jst())),
+        Date.to_string(Lib.today(Offset.utc())),
+        Date.to_string(Lib.today(jst())),
+      )
+    }
+  })
+  assert now == "2025-10-30T00:30:00.000+09:00"
+  assert (utc_day, jst_day) == ("2025-10-29", "2025-10-30")
+}
+
+@test
+fn now_moves_with_test_clock() {
+  (later, _) = State.run(at(0), fn() {
+    with TestClock {
+      (use Clock).sleep(90000)
+      OffsetDateTime.to_string(Lib.now(Offset.utc()))
+    }
+  })
+  assert later == "1970-01-01T00:01:30.000Z"
+}
+
+@test
+fn parse_instant_reads_what_instant_writes() {
+  t = at(1761696000123)
+  assert instant(Instant.to_string(t)) == Some(t)
+  assert instant("2025-10-29T09:00:00.123+09:00") == Some(t)
+  assert instant("1969-12-31T23:59:59.999Z") == Some(at(-1))
+  assert instant("2025-10-29T00:00:00.123") == None
+}
+
+@test
+fn days_are_24_hours() {
+  assert Lib.days(2) == h(48)
+}
+
+@test
+fn duration_to_string_writes_hours_minutes_seconds() {
+  strings = List.map(
+    [
+      h(1) |> Duration.add(m(30)),
+      ms(500),
+      ms(1050),
+      ms(1005),
+      h(36),
+      ms(0),
+      ms(-1500),
+      m(90) |> Duration.add(ms(1)),
+    ],
+    Lib.duration_to_string,
+  )
+  assert strings
+    == ["PT1H30M", "PT0.5S", "PT1.05S", "PT1.005S", "PT36H", "PT0S", "-PT1.5S", "PT1H30M0.001S"]
+}
+
+@test
+fn parse_duration_reads_what_duration_to_string_writes() {
+  durations = [
+    h(1) |> Duration.add(m(30)),
+    ms(500),
+    ms(1005),
+    h(36),
+    ms(0),
+    ms(-1500),
+    m(90) |> Duration.add(ms(1)),
+  ]
+  assert List.map(durations, fn(d) { duration(Lib.duration_to_string(d)) })
+    == List.map(durations, Some)
+}
+
+@test
+fn parse_duration_reads_days_and_fractions() {
+  assert duration("P2D") == Some(h(48))
+  assert duration("P1DT12H") == Some(h(36))
+  assert duration("PT90M") == Some(m(90))
+  assert duration("PT0,25S") == Some(ms(250))
+  assert duration("PT1.23456S") == Some(ms(1234))
+  assert duration("+PT1S") == Some(ms(1000))
+  assert duration("-P1D") == Some(h(-24))
+  assert duration("PT1H1S") == Some(h(1) |> Duration.add(ms(1000)))
+  assert duration("P9999999999DT9999999999H")
+    == Some(Lib.days(9999999999) |> Duration.add(Duration.hours(9999999999)))
+}
+
+@test
+fn parse_duration_refuses_calendar_units_and_other_forms() {
+  assert duration("P1Y") == None
+  assert duration("P1M") == None
+  assert duration("P1W") == None
+  assert duration("P") == None
+  assert duration("PT") == None
+  assert duration("P1DT") == None
+  assert duration("PT1M1H") == None
+  assert duration("PT1.5H") == None
+  assert duration("PT-1H") == None
+  assert duration("1H") == None
+  assert duration("pt1h") == None
+  assert duration("--PT1H") == None
+  assert duration("PT12345678901S") == None
+  assert duration("") == None
+}

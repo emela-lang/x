@@ -1,0 +1,50 @@
+import Std.Duration.{Duration}
+import Offset.{Offset}
+
+fn parsed(s: String) -> Option[Offset] {
+  Some(Offset.parse(s)) escape {
+    ParseError(_) -> None
+  }
+}
+
+@test
+fn from_minutes_takes_what_rfc_3339_can_write() {
+  assert Offset.from_minutes(1439) != None
+  assert Offset.from_minutes(-1439) != None
+  assert Offset.from_minutes(1440) == None
+  assert Offset.from_hours(9) == Offset.from_minutes(540)
+  assert Offset.from_hours(24) == None
+  assert Offset.from_minutes(0) == Some(Offset.utc())
+}
+
+@test
+fn to_string_writes_a_sign_hours_and_minutes() {
+  strings = [540, -330, 0, 1439]
+    |> List.filter_map(Offset.from_minutes)
+    |> List.map(Offset.to_string)
+  assert strings == ["+09:00", "-05:30", "+00:00", "+23:59"]
+  assert (Offset.from_minutes(-330) |> Option.map(Offset.to_duration))
+    == Some(Duration.minutes(-330))
+}
+
+@test
+fn parse_reads_z_and_signed_offsets() {
+  assert parsed("Z") == Some(Offset.utc())
+  assert parsed("z") == Some(Offset.utc())
+  assert parsed("+09:00") == Offset.from_hours(9)
+  assert parsed("-05:30") == Offset.from_minutes(-330)
+  assert parsed("-00:00") == Some(Offset.utc())
+  assert parsed("+23:59") == Offset.from_minutes(1439)
+}
+
+@test
+fn parse_refuses_other_forms() {
+  assert parsed("+0900") == None
+  assert parsed("+9:00") == None
+  assert parsed("+24:00") == None
+  assert parsed("+09:60") == None
+  assert parsed("09:00") == None
+  assert parsed("UTC") == None
+  assert parsed("+-09:00") == None
+  assert parsed("") == None
+}
