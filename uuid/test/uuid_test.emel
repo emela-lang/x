@@ -1,0 +1,128 @@
+import Std.Bytes.{Bytes}
+import Std.Clock.{TestClock}
+import Std.Fiber.{Success, Failure}
+import Std.Instant.{Instant}
+import Std.Random.{Random}
+import Std.State.{State}
+import Lib
+import Lib.{Uuid}
+
+# Answers the Ints in the state in order, then 0.
+handler FixedRandom: Random {
+  fn int() {
+    st = use State[List[Int]]
+    st.get() match {
+      [n, ..rest] -> {
+        st.set(rest)
+        n
+      }
+      [] -> 0
+    }
+  }
+  fn float() { 0.0 }
+}
+
+fn at(ms: Int) -> Instant {
+  Instant.from_unix_milliseconds(Int64.from_int(ms))
+}
+
+fn v4_from(ints: List[Int]) -> Uuid {
+  (u, _) = State.run(ints, fn() { with FixedRandom { Lib.v4() } })
+  u
+}
+
+fn v7_from(ms: Int, ints: List[Int]) -> Uuid {
+  (u, _) = State.run(at(ms), fn() {
+    (u, _) = State.run(ints, fn() { with FixedRandom, TestClock { Lib.v7() } })
+    u
+  })
+  u
+}
+
+fn parsed(s: String) -> Option[Uuid] {
+  Fiber.attempt(fn() { Lib.parse(s) }) match {
+    Success(u) -> Some(u)
+    Failure(_) -> None
+  }
+}
+
+@test
+fn v4_sets_the_version_and_the_variant() {
+  u = v4_from([-1, -1, -1, -1])
+  assert u.to_string() == "ffffffff-ffff-4fff-bfff-ffffffffffff"
+  assert v4_from([0, 0, 0, 0]).to_string() == "00000000-0000-4000-8000-000000000000"
+  assert u.version() == 4
+}
+
+@test
+fn v4_takes_its_bits_from_random_in_order() {
+  u = v4_from([0x01234567, 0x7654abcd, 0x01234567, 0x7654abcd])
+  assert u.to_string() == "01234567-7654-4bcd-8123-45677654abcd"
+}
+
+@test
+fn v7_puts_the_time_first() {
+  u = v7_from(0x0190a5c8, [0, 0, 0])
+  assert u.to_string() == "00000190-a5c8-7000-8000-000000000000"
+  assert u.version() == 7
+  assert u.timestamp() == Some(at(0x0190a5c8))
+}
+
+@test
+fn v7_fills_the_rest_with_random_bits() {
+  u = v7_from(0, [-1, -1, -1])
+  assert u.to_string() == "00000000-0000-7fff-bfff-ffffffffffff"
+}
+
+@test
+fn v7_sorts_by_time() {
+  earlier = v7_from(1000, [-1, -1, -1])
+  later = v7_from(1001, [0, 0, 0])
+  assert earlier < later
+}
+
+@test
+fn parse_reads_what_to_string_writes() {
+  s = "0190a5c8-5f3e-7b2d-9c4a-1e2f3a4b5c6d"
+  assert parsed(s).map(Lib.to_string) == Some(s)
+  assert parsed("0190A5C8-5F3E-7B2D-9C4A-1E2F3A4B5C6D").map(Lib.to_string) == Some(s)
+}
+
+@test
+fn parse_fails_on_anything_else() {
+  assert parsed("") == None
+  assert parsed("0190a5c85f3e7b2d9c4a1e2f3a4b5c6d") == None
+  assert parsed("0190a5c8-5f3e-7b2d-9c4a-1e2f3a4b5c6") == None
+  assert parsed("0190a5c8-5f3e-7b2d-9c4a1-e2f3a4b5c6d") == None
+  assert parsed("0190a5c8-5f3e-7b2d-9c4a-1e2f3a4b5c6g") == None
+  assert parsed("{0190a5c8-5f3e-7b2d-9c4a-1e2f3a4b5c6d}") == None
+  assert parsed(" 0190a5c8-5f3e-7b2d-9c4a-1e2f3a4b5c6d") == None
+}
+
+@test
+fn parse_keeps_any_version() {
+  u = parsed("00000000-0000-1000-0000-000000000000")
+  assert u.map(Lib.version) == Some(1)
+  assert u.map(Lib.timestamp) == Some(None)
+}
+
+@test
+fn nil_is_all_zero() {
+  assert Lib.nil().to_string() == "00000000-0000-0000-0000-000000000000"
+  assert Lib.nil().version() == 0
+  assert Lib.nil() < v4_from([0, 0, 0, 0])
+}
+
+@test
+fn bytes_go_both_ways() {
+  b = Bytes.hex("0190a5c85f3e7b2d9c4a1e2f3a4b5c6d")
+  u = Lib.from_bytes(b)
+  assert u.map(Lib.to_bytes) == Some(b)
+  assert u.map(Lib.to_string) == Some("0190a5c8-5f3e-7b2d-9c4a-1e2f3a4b5c6d")
+  assert Lib.from_bytes(Bytes.hex("0190a5c8")) == None
+}
+
+@test
+fn show_is_the_text_form() {
+  assert Lib.nil().show() == "00000000-0000-0000-0000-000000000000"
+}
