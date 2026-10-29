@@ -1,6 +1,7 @@
 # Run with Bun: `EMELA_NODE=bun emela test`.
 
-import Dynamic.{Dynamic, Decode, DecodeErrors, Text, Bool, Items}
+import Std.Bytes.{Bytes}
+import Dynamic.{Dynamic, Decode, DecodeErrors, Text, Bool, Items, Binary}
 import Dynamic.Number
 import Sql
 import Sql.{Sql, SqlError, Statement}
@@ -145,4 +146,49 @@ fn each_with_has_its_own_memory_database() {
     DecodeErrors(..)   -> "decode"
   }
   assert message == "no such table: notes"
+}
+
+type File(name: String, data: Bytes) derive Eq
+
+impl File: Decode {
+  fn from_dynamic(d) {
+    File(name: d.field("name", Decode.from_dynamic), data: d.field("data", Decode.from_dynamic))
+  }
+}
+
+@test
+fn a_blob_is_written_and_read_as_bytes() {
+  every = Bytes.from_list(List.range(0, 256)).or(Bytes.empty())
+  written = [
+    File(name: "empty", data: Bytes.empty()),
+    File(name: "zeros", data: Bytes.hex("00000a00")),
+    File(name: "every", data: every),
+  ]
+  found = with BunSqlite(path: ":memory:") {
+    Sql.execute("create table files (id integer primary key, name text, data blob not null)", [])
+    (use Sql).batch(
+      written.map(fn(f) {
+        Statement(
+          text: "insert into files (name, data) values (?, ?)",
+          params: [Text(f.name), Binary(f.data)],
+        )
+      }),
+    )
+    files: List[File] = Sql.all("select name, data from files order by id", [])
+    files
+  }
+  assert found == written
+}
+
+@test
+fn a_blob_written_in_sql_comes_back_as_binary() {
+  rows = with BunSqlite(path: ":memory:") {
+    (use Sql).query(
+      Statement(
+        text: "select x'00ff' as data, typeof(?) as kind",
+        params: [Binary(Bytes.hex("01"))],
+      ),
+    )
+  }
+  assert rows == [Dynamic.object([("data", Binary(Bytes.hex("00ff"))), ("kind", Text("blob"))])]
 }
