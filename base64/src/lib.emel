@@ -1,0 +1,202 @@
+# Base64 of RFC 4648: the standard alphabet with `+` and `/` (section 4), and the URL and file
+# name safe one with `-` and `_` (section 5).
+#
+# ```emela
+# import Std.Bytes.{Bytes}
+# import Base64
+#
+# Base64.encode(Bytes.encode_utf8("hi?")) # "aGk/"
+# Base64.encode_url(Bytes.encode_utf8("hi?")) # "aGk_"
+# ```
+#
+# Decoding is strict, so that one text is read for each Bytes: whitespace and line breaks,
+# characters outside the alphabet, padding in the wrong place or of the wrong length, and unused
+# bits that are not zero (RFC 4648 section 3.5) all fail with Base64Error.
+
+import Std.Bytes.{Bytes}
+
+## Where `decode` or `decode_url` stopped. `offset` counts code points from the start of the
+## input.
+pub error Base64Error(message: String, offset: Int)
+
+## `b` in the standard alphabet (`+`, `/`), padded with `=` to a multiple of 4 characters.
+pub fn encode(b: Bytes) -> String {
+  groups(b.to_list(), Standard, True, [])
+}
+
+## `b` in the URL and file name safe alphabet (`-`, `_`), without padding.
+pub fn encode_url(b: Bytes) -> String {
+  groups(b.to_list(), Url, False, [])
+}
+
+## The bytes that `s` encodes in the standard alphabet. The padding is required.
+pub fn decode(s: String) -> Bytes fails Base64Error {
+  quads(s.code_points(), 0, Standard, True, [])
+}
+
+## The bytes that `s` encodes in the URL and file name safe alphabet. The padding may be left
+## out; if it is there, it must be complete.
+pub fn decode_url(s: String) -> Bytes fails Base64Error {
+  quads(s.code_points(), 0, Url, False, [])
+}
+
+enum Alphabet {
+  Standard
+  Url
+}
+
+const PAD: Int = 0x3D
+
+# The characters of the bytes `xs`, three bytes at a time. `written` holds the groups written so
+# far, the last one first.
+fn groups(xs: List[Int], alphabet: Alphabet, padded: Bool, written: List[String]) -> String {
+  xs match {
+    [a, b, c, ..rest] -> {
+      n = a * 0x10000 + b * 0x100 + c
+      group = alphabet.characters([n / 0x40000, n / 0x1000 % 64, n / 64 % 64, n % 64])
+      groups(rest, alphabet, padded, [group, ..written])
+    }
+    [a, b] -> {
+      n = a * 0x10000 + b * 0x100
+      group = alphabet.characters([n / 0x40000, n / 0x1000 % 64, n / 64 % 64])
+      [if padded { "#{group}=" } else { group }, ..written].reverse().join("")
+    }
+    [a] -> {
+      group = alphabet.characters([a / 4, a % 4 * 16])
+      [if padded { "#{group}==" } else { group }, ..written].reverse().join("")
+    }
+    [] -> written.reverse().join("")
+  }
+}
+
+fn characters(alphabet: Alphabet, values: List[Int]) -> String {
+  values.map(fn(v) { alphabet.character(v) }).join("")
+}
+
+# The character of the 6-bit value `n`.
+fn character(alphabet: Alphabet, n: Int) -> String {
+  point = if n < 26 {
+    0x41 + n
+  } else if n < 52 {
+    0x61 + n - 26
+  } else if n < 62 {
+    0x30 + n - 52
+  } else if n == 62 {
+    alphabet.code_62()
+  } else {
+    alphabet.code_63()
+  }
+  String.from_code_point(point).or("")
+}
+
+fn code_62(alphabet: Alphabet) -> Int {
+  alphabet match {
+    Standard -> 0x2B
+    Url      -> 0x2D
+  }
+}
+
+fn code_63(alphabet: Alphabet) -> Int {
+  alphabet match {
+    Standard -> 0x2F
+    Url      -> 0x5F
+  }
+}
+
+# The 6-bit value of the character `c`, or `None` if it is not in the alphabet.
+fn value(alphabet: Alphabet, c: Int) -> Option[Int] {
+  if c >= 0x41 && c <= 0x5A {
+    Some(c - 0x41)
+  } else if c >= 0x61 && c <= 0x7A {
+    Some(c - 0x61 + 26)
+  } else if c >= 0x30 && c <= 0x39 {
+    Some(c - 0x30 + 52)
+  } else if c == alphabet.code_62() {
+    Some(62)
+  } else if c == alphabet.code_63() {
+    Some(63)
+  } else {
+    None
+  }
+}
+
+# The value of the character `c` at `offset`, which must be in the alphabet.
+fn digit(alphabet: Alphabet, c: Int, offset: Int) -> Int fails Base64Error {
+  alphabet.value(c) match {
+    Some(v)          -> v
+    None if c == PAD -> fail Base64Error(message: "unexpected `=`", offset:)
+    None             -> fail Base64Error(message: "expected a base64 character", offset:)
+  }
+}
+
+# Reads `cs` four characters at a time, from `offset`. `read` holds the bytes read so far, the
+# last one first. `padded` requires the padding at the end.
+fn quads(cs: List[Int], offset: Int, alphabet: Alphabet, padded: Bool, read: List[Int]) -> Bytes
+  fails Base64Error {
+  cs match {
+    [] -> bytes(read)
+    [a, b, c, d, ..rest] -> {
+      va = alphabet.digit(a, offset)
+      vb = alphabet.digit(b, offset + 1)
+      if c == PAD {
+        if d != PAD { fail Base64Error(message: "expected `=`", offset: offset + 3) }
+        end(rest, offset + 4)
+        bits_are_zero(vb % 16, offset + 1)
+        bytes([va * 4 + vb / 16, ..read])
+      } else {
+        vc = alphabet.digit(c, offset + 2)
+        if d == PAD {
+          end(rest, offset + 4)
+          bits_are_zero(vc % 4, offset + 2)
+          bytes([vb % 16 * 16 + vc / 4, va * 4 + vb / 16, ..read])
+        } else {
+          vd = alphabet.digit(d, offset + 3)
+          quads(
+            rest,
+            offset + 4,
+            alphabet,
+            padded,
+            [vc % 4 * 64 + vd, vb % 16 * 16 + vc / 4, va * 4 + vb / 16, ..read],
+          )
+        }
+      }
+    }
+    [a] -> {
+      alphabet.digit(a, offset)
+      fail Base64Error(message: "unexpected end of input", offset: offset + 1)
+    }
+    [a, b] -> {
+      va = alphabet.digit(a, offset)
+      vb = alphabet.digit(b, offset + 1)
+      if padded { fail Base64Error(message: "expected `=`", offset: offset + 2) }
+      bits_are_zero(vb % 16, offset + 1)
+      bytes([va * 4 + vb / 16, ..read])
+    }
+    [a, b, c] -> {
+      va = alphabet.digit(a, offset)
+      vb = alphabet.digit(b, offset + 1)
+      if c == PAD { fail Base64Error(message: "expected `=`", offset: offset + 3) }
+      vc = alphabet.digit(c, offset + 2)
+      if padded { fail Base64Error(message: "expected `=`", offset: offset + 3) }
+      bits_are_zero(vc % 4, offset + 2)
+      bytes([vb % 16 * 16 + vc / 4, va * 4 + vb / 16, ..read])
+    }
+  }
+}
+
+# Nothing may follow the padding.
+fn end(rest: List[Int], offset: Int) -> () fails Base64Error {
+  if !rest.is_empty() { fail Base64Error(message: "expected the end of input", offset:) }
+}
+
+# The bits of the last character that no byte uses must be zero (RFC 4648 section 3.5).
+fn bits_are_zero(unused: Int, offset: Int) -> () fails Base64Error {
+  if unused != 0 { fail Base64Error(message: "the unused bits are not zero", offset:) }
+}
+
+fn bytes(reversed: List[Int]) -> Bytes {
+  Bytes.from_list(reversed.reverse()) match {
+    Some(b) -> b
+    None    -> panic("Base64 read a value outside 0 to 255")
+  }
+}

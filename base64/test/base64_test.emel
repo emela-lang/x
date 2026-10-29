@@ -1,0 +1,132 @@
+import Std.Bytes.{Bytes}
+import Lib.{Base64Error}
+
+fn failure(s: String) -> (String, Int) {
+  {
+    Lib.decode(s)
+    ("", -1)
+  } escape {
+    Base64Error(message:, offset:) -> (message, offset)
+  }
+}
+
+fn url_failure(s: String) -> (String, Int) {
+  {
+    Lib.decode_url(s)
+    ("", -1)
+  } escape {
+    Base64Error(message:, offset:) -> (message, offset)
+  }
+}
+
+fn text(s: String) -> Bytes {
+  Bytes.encode_utf8(s)
+}
+
+# 0 to 255, in order.
+fn every_byte() -> Bytes {
+  Bytes.from_list(List.range(0, 256)).or(Bytes.empty())
+}
+
+# RFC 4648 section 10.
+const VECTORS: List[(String, String)] = [
+  ("", ""),
+  ("f", "Zg=="),
+  ("fo", "Zm8="),
+  ("foo", "Zm9v"),
+  ("foob", "Zm9vYg=="),
+  ("fooba", "Zm9vYmE="),
+  ("foobar", "Zm9vYmFy"),
+]
+
+@test
+fn encode_writes_the_test_vectors_of_rfc_4648() {
+  assert VECTORS.map(fn((plain, _)) { Lib.encode(text(plain)) }) == VECTORS.map(fn((_, e)) { e })
+}
+
+@test
+fn decode_reads_the_test_vectors_of_rfc_4648() {
+  assert VECTORS.map(fn((_, e)) { Lib.decode(e) }) == VECTORS.map(fn((plain, _)) { text(plain) })
+}
+
+@test
+fn the_url_alphabet_has_no_padding() {
+  assert Lib.encode_url(text("fooba")) == "Zm9vYmE"
+  assert Lib.encode_url(text("foob")) == "Zm9vYg"
+  assert Lib.decode_url("Zm9vYmE") == text("fooba")
+  assert Lib.decode_url("Zm9vYmE=") == text("fooba")
+  assert Lib.decode_url("Zm9vYg") == text("foob")
+  assert Lib.decode_url("Zm9vYg==") == text("foob")
+}
+
+@test
+fn the_alphabets_differ_in_62_and_63() {
+  b = Bytes.hex("fbff")
+  assert Lib.encode(b) == "+/8="
+  assert Lib.encode_url(b) == "-_8"
+  assert Lib.decode("+/8=") == b
+  assert Lib.decode_url("-_8") == b
+  assert Lib.encode(text("hi?")) == "aGk/"
+  assert Lib.encode_url(text("hi?")) == "aGk_"
+}
+
+@test
+fn every_byte_goes_and_comes_back() {
+  all = every_byte()
+  assert Lib.decode(Lib.encode(all)) == all
+  assert Lib.decode_url(Lib.encode_url(all)) == all
+  assert Lib.encode(all).length() == 344
+}
+
+@test
+fn every_length_up_to_5_goes_and_comes_back() {
+  all = every_byte()
+  pieces = List.range(0, 6).flat_map(fn(n) {
+    List.range(0, 256 - n + 1).map(fn(from) { all.slice(from, from + n) })
+  })
+  assert pieces.all(fn(b) { Lib.decode(Lib.encode(b)) == b })
+  assert pieces.all(fn(b) { Lib.decode_url(Lib.encode_url(b)) == b })
+}
+
+@test
+fn decode_refuses_characters_outside_the_alphabet() {
+  assert failure("Zm9v Yg==") == ("expected a base64 character", 4)
+  assert failure("Zm9v\nYg==") == ("expected a base64 character", 4)
+  assert failure("Zm9vYg==\n") == ("expected the end of input", 8)
+  assert failure("-_8=") == ("expected a base64 character", 0)
+  assert url_failure("+/8") == ("expected a base64 character", 0)
+  assert failure("Zm9*") == ("expected a base64 character", 3)
+  assert failure("Zmあv") == ("expected a base64 character", 2)
+}
+
+@test
+fn decode_requires_the_padding_where_it_belongs() {
+  assert failure("Zg") == ("expected `=`", 2)
+  assert failure("Zg=") == ("expected `=`", 3)
+  assert failure("Zm8") == ("expected `=`", 3)
+  assert failure("Zg=a") == ("expected `=`", 3)
+  assert failure("Z===") == ("unexpected `=`", 1)
+  assert failure("====") == ("unexpected `=`", 0)
+  assert failure("Zg==Zg==") == ("expected the end of input", 4)
+  assert failure("Zm8=Zg==") == ("expected the end of input", 4)
+  assert failure("Zg===") == ("expected the end of input", 4)
+  assert failure("Z") == ("unexpected end of input", 1)
+  assert failure("Zm9vY") == ("unexpected end of input", 5)
+}
+
+@test
+fn decode_url_takes_padding_only_when_it_is_complete() {
+  assert url_failure("Zg=") == ("expected `=`", 3)
+  assert url_failure("Zg==Zg") == ("expected the end of input", 4)
+  assert url_failure("Z") == ("unexpected end of input", 1)
+}
+
+@test
+fn decode_refuses_unused_bits_that_are_not_zero() {
+  assert Lib.decode("Zg==") == text("f")
+  assert failure("Zh==") == ("the unused bits are not zero", 1)
+  assert Lib.decode("Zm8=") == text("fo")
+  assert failure("Zm9=") == ("the unused bits are not zero", 2)
+  assert url_failure("Zh") == ("the unused bits are not zero", 1)
+  assert url_failure("Zm9") == ("the unused bits are not zero", 2)
+}
