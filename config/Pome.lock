@@ -10,10 +10,10 @@ manifest = "h1:MgKNuMP78Uoym3tnN2ltmSLCPHocqIAA1EQwVNVGz2A="
 
 [[pome]]
 path = "github.com/emela-lang/x/redacted"
-version = "v0.2.0"
-commit = "9527a2b40da1a8f9a9de0d9e51e10d705dcc288d"
-hash = "h1:lHu56OQcXcGFV18V7SEhRg6AJIsRPijP+yx8Rb3afBc="
-manifest = "h1:F/pM1OMDS5Kh0aBzrgPMlltWGo8bqSl0bMRX1fbgWRo="
+version = "v0.3.0"
+commit = "015aa25ceb9ee740801ba70c7c11d3f1908434c1"
+hash = "h1:DE4DtfV1HD5IuplU2poZaQ2JlShC2Sp/lG552ZuEHiI="
+manifest = "h1:ZvcWPRaCb7dOSr+bKfusHQrqMxFcFZt9V3mb2hOqYPs="
 dev = true
 
 [[pome]]

@@ -14,14 +14,13 @@ type AppConfig(
   origins: List[String],
 )
 
-# What `derive Shaped` is meant to generate. Redacted has no impl of Shaped, so the field is
-# described as the String it holds.
+# What `derive Shaped` is meant to generate.
 impl AppConfig: Shaped {
   fn shape_in(proxy, visiting) {
     Shape.visit("AppConfig", visiting, fn(visiting) {
       int: Option[Int] = None
       bool: Option[Bool] = None
-      string: Option[String] = None
+      secret: Option[Redacted[String]] = None
       maybe: Option[Option[String]] = None
       strings: Option[List[String]] = None
       Record(
@@ -32,7 +31,7 @@ impl AppConfig: Shaped {
             shape: Shaped.shape_in(int, visiting) |> Shape.description("the port to listen on"),
           ),
           Field(name: "debug", shape: Shaped.shape_in(bool, visiting)),
-          Field(name: "database_url", shape: Shaped.shape_in(string, visiting)),
+          Field(name: "database_url", shape: Shaped.shape_in(secret, visiting)),
           Field(name: "log_level", shape: Shaped.shape_in(maybe, visiting)),
           Field(name: "origins", shape: Shaped.shape_in(strings, visiting)),
         ],
@@ -41,13 +40,13 @@ impl AppConfig: Shaped {
   }
 }
 
-# What `derive Decode` is meant to generate, with the secret wrapped as it is read.
+# What `derive Decode` is meant to generate.
 impl AppConfig: Decode {
   fn from_dynamic(d) {
     AppConfig(
       port: Dynamic.field(d, "port", Decode.from_dynamic),
       debug: Dynamic.field(d, "debug", Decode.from_dynamic),
-      database_url: Redacted.make(Dynamic.field(d, "database_url", Decode.from_dynamic)),
+      database_url: Dynamic.field(d, "database_url", Decode.from_dynamic),
       log_level: Dynamic.field(d, "log_level", Decode.from_dynamic),
       origins: Dynamic.field(d, "origins", Decode.from_dynamic),
     )
@@ -68,7 +67,7 @@ impl AppConfig: Decode {
         Decoded(database_url),
         Decoded(log_level),
         Decoded(origins),
-      ) -> AppConfig(port:, debug:, database_url: Redacted.make(database_url), log_level:, origins:)
+      ) -> AppConfig(port:, debug:, database_url:, log_level:, origins:)
       _ -> fail DecodeErrors(
         errors: List.flatten(
           [

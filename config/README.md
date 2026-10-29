@@ -52,14 +52,16 @@ APP_PORT: expected number, found text; APP_DATABASE_URL: is not set
 ```
 
 - 説明に変数の値は入れない．秘密値を `Redacted[String]`（x/redacted）で受けても，誤りのメッセージから値が漏れない
-- 値を入れないのは秘密のフィールドに限らない．フィールドが秘密かどうかを Shape から判別する手段がなく，全フィールドで値を出さない方が単純で安全なため
+- 値を入れないのは秘密のフィールドに限らない．全フィールドで値を出さない方が，秘密かどうかの判定を誤る余地がなく単純なため
 - record でない型で `load` を呼ぶと panic する．環境の誤りでなく，プログラムの誤りなので
 
 ## 秘密値
 
-`Redacted[String]` のフィールドは，`Shaped` では中の `String` として書き，`Decode` では読んだ文字列を `Redacted.make` で包む．`Redacted` は `Show` で `<redacted>` と出るので，設定 record をログに出しても値は出ない．
+`Redacted[String]` のフィールドは，ほかのフィールドと同じく `Shaped.shape_in` と `Decode.from_dynamic` で書ける．impl は x/redacted v0.3.0 にある．
 
-x/redacted にはまだ `Shaped` と `Decode` の impl がない．impl は型か trait を定義したモジュールにしか書けない（E0331）ので，入れるなら x/redacted が x/shape と x/dynamic に依存する形になる．今は record の impl で手で包む．
+- `Redacted` は `Show` で `<redacted>` と出るので，設定 record をログに出しても値は出ない
+- `Redacted` の `Decode` は，失敗したときの `DecodeError` にも値を残さない
+- `Redacted` の Shape には `writeOnly` の注記が付く
 
 ## .env
 
@@ -111,7 +113,6 @@ quince もクエリ文字列とパスの値を Shape に合わせて `Dynamic` �
 
 - ネストした record．`DATABASE__HOST` のように区切りを決めて，フィールドの record を読む
 - `Map` のフィールド（`APP_LABELS_*` のように prefix で集める）．今の `Env` は一覧を取れないので，`Env` 側の変更が要る
-- x/redacted の `Shaped` と `Decode` の impl
 - `.env` の複数行の値と変数の展開
 
 ## 依存して使う

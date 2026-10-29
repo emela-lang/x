@@ -8,4 +8,4 @@ emela = "0.25.0"
 "github.com/emela-lang/x/shape" = "v0.3.0"
 
 [dev-dependencies]
-"github.com/emela-lang/x/redacted" = "v0.2.0"
+"github.com/emela-lang/x/redacted" = "v0.3.0"
