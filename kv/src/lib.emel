@@ -40,14 +40,14 @@ pub effect Kv {
 ## Every operation takes effect at once and never suspends.
 pub handler TestKv: Kv {
   suspend fn get(key, resume) {
-    resume(Map.get((use State[Map[String, String]]).get(), key))
+    resume((use State[Map[String, String]]).get().get(key))
   }
   suspend fn put(key, value, resume) {
-    (use State[Map[String, String]]).update(fn(m) { Map.insert(m, key, value) })
+    (use State[Map[String, String]]).update(fn(m) { m.insert(key, value) })
     resume(())
   }
   suspend fn delete(key, resume) {
-    (use State[Map[String, String]]).update(fn(m) { Map.remove(m, key) })
+    (use State[Map[String, String]]).update(fn(m) { m.remove(key) })
     resume(())
   }
 }

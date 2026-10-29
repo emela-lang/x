@@ -10,7 +10,6 @@
 # What `Encode` writes satisfies the schema, except a Float that is NaN or ±Infinity, which is
 # written as null.
 
-import Std.Map.{Map}
 import Dynamic.{Dynamic, Number, Text, Items, Fields}
 import Dynamic.Number
 import Lib.{
@@ -44,10 +43,10 @@ const DIALECT: String = "https://json-schema.org/draft/2020-12/schema"
 pub fn document(shape: Shape) -> Dynamic {
   (root, defs) = schema(shape, [])
   head = [("$schema", Text(DIALECT))]
-  extra = if List.is_empty(defs) {
+  extra = if defs.is_empty() {
     head
   } else {
-    List.append(head, [("$defs", Dynamic.object(defs))])
+    head.append([("$defs", Dynamic.object(defs))])
   }
   with_pairs(root, extra)
 }
@@ -82,7 +81,7 @@ fn schema(shape: Shape, defs: List[(String, Dynamic)]) -> (Dynamic, List[(String
     Named(name:, shape: inner) -> define(name, defs, fn(defs) { schema(inner, defs) })
     Annotated(shape: inner, notes:) -> {
       (s, defs) = schema(inner, defs)
-      (with_pairs(s, List.map(notes, keyword)), defs)
+      (with_pairs(s, notes.map(keyword)), defs)
     }
   }
 }
@@ -93,12 +92,12 @@ fn define(
   defs: List[(String, Dynamic)],
   build: fn(List[(String, Dynamic)]) -> (Dynamic, List[(String, Dynamic)]),
 ) -> (Dynamic, List[(String, Dynamic)]) {
-  if List.any(defs, fn((n, _)) { n == name }) {
+  if defs.any(fn((n, _)) { n == name }) {
     (reference(name), defs)
   } else {
     # The name goes in first, so a `Ref` to it inside does not build it again.
-    (body, built) = build(List.append(defs, [(name, Dynamic.object([]))]))
-    (reference(name), List.map(built, fn((n, s)) { if n == name { (n, body) } else { (n, s) } }))
+    (body, built) = build(defs.append([(name, Dynamic.object([]))]))
+    (reference(name), built.map(fn((n, s)) { if n == name { (n, body) } else { (n, s) } }))
   }
 }
 
@@ -111,11 +110,9 @@ fn object_of(
     (s, defs) = schema(field.shape, defs)
     ((field.name, s), defs)
   })
-  required = fields
-    |> List.filter(fn(field) { !optional(field.shape) })
-    |> List.map(fn(field) { Text(field.name) })
+  required = fields.filter(fn(field) { !optional(field.shape) }).map(fn(field) { Text(field.name) })
   pairs = [("type", Text("object")), ("properties", Dynamic.object(properties))]
-  (Dynamic.object(List.append(pairs, [("required", Items(required))])), defs)
+  (Dynamic.object(pairs.append([("required", Items(required))])), defs)
 }
 
 ## The schema of one variant: `"tag"` and, unless it has no contents, `"value"`.
@@ -125,7 +122,7 @@ fn variant(v: Variant, defs: List[(String, Dynamic)]) -> (Dynamic, List[(String,
     NoFields -> (None, defs)
     PositionalFields(shapes) -> {
       (items, defs) = all(shapes, defs, schema)
-      n = Number(Number.from_int(List.length(shapes)))
+      n = Number(Number.from_int(shapes.length()))
       array = Dynamic.object(
         [("type", Text("array")), ("prefixItems", Items(items)), ("minItems", n), ("maxItems", n)],
       )
@@ -156,16 +153,16 @@ fn all[A, B](
   defs: List[(String, Dynamic)],
   f: fn(A, List[(String, Dynamic)]) -> (B, List[(String, Dynamic)]),
 ) -> (List[B], List[(String, Dynamic)]) {
-  (reversed, defs) = List.fold(xs, from: ([], defs), f: fn((acc, defs), x) {
+  (reversed, defs) = xs.fold(from: ([], defs), f: fn((acc, defs), x) {
     (y, defs) = f(x, defs)
     ([y, ..acc], defs)
   })
-  (List.reverse(reversed), defs)
+  (reversed.reverse(), defs)
 }
 
 ## Whether a field of this shape may be missing.
 fn optional(shape: Shape) -> Bool {
-  Lib.strip(shape) match {
+  shape.strip() match {
     Option(_) -> True
     _         -> False
   }
@@ -197,25 +194,23 @@ fn reference(name: String) -> Dynamic {
 }
 
 fn pointer_token(name: String) -> String {
-  String.chars(name)
-    |> List.map(fn(c) {
-      c match {
-        "~" -> "~0"
-        "/" -> "~1"
-        _   -> if fragment_char(c) { c } else { percent(c) }
-      }
-    })
-    |> String.join("")
+  name.chars().map(fn(c) {
+    c match {
+      "~" -> "~0"
+      "/" -> "~1"
+      _   -> if fragment_char(c) { c } else { percent(c) }
+    }
+  }).join("")
 }
 
 ## Whether the one-character string `c` may stand as it is in the fragment of a URI: ASCII letters
 ## and digits and `-._~!$&'()*+,;=:@/?` (RFC 3986). Names in Emela are ASCII.
 fn fragment_char(c: String) -> Bool {
-  String.code_points(c) match {
+  c.code_points() match {
     [p] -> (p >= 0x30 && p <= 0x39)
       || (p >= 0x41 && p <= 0x5A)
       || (p >= 0x61 && p <= 0x7A)
-      || String.contains("-._~!$&'()*+,;=:@/?", c)
+      || "-._~!$&'()*+,;=:@/?".contains(c)
     _ -> False
   }
 }
@@ -223,15 +218,15 @@ fn fragment_char(c: String) -> Bool {
 ## `%` and two upper-case hexadecimal digits for an ASCII character.
 fn percent(c: String) -> String {
   digits = "0123456789ABCDEF"
-  p = String.code_points(c) |> List.head |> Option.or(0)
-  hex = fn(n) { String.chars(digits) |> List.get(n) |> Option.or("0") }
+  p = c.code_points().head().or(0)
+  hex = fn(n) { digits.chars().get(n).or("0") }
   "%#{hex(p / 16)}#{hex(p % 16)}"
 }
 
 ## `schema` (an object) with `pairs` added; a key already there is replaced.
 fn with_pairs(schema: Dynamic, pairs: List[(String, Dynamic)]) -> Dynamic {
   schema match {
-    Fields(m) -> Fields(List.fold(pairs, from: m, f: fn(acc, (k, v)) { Map.insert(acc, k, v) }))
+    Fields(m) -> Fields(pairs.fold(from: m, f: fn(acc, (k, v)) { acc.insert(k, v) }))
     _         -> schema
   }
 }

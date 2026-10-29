@@ -1,4 +1,4 @@
 [pome]
 name = "github.com/emela-lang/x/dynamic"
 version = "0.4.0"
-emela = "0.25.0"
+emela = "0.26.0"

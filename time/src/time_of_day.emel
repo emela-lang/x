@@ -54,14 +54,14 @@ pub fn millisecond(t: TimeOfDay) -> Int {
 ## Goes round the clock: `23:00` plus two hours is `01:00`. Earlier if `d` is negative.
 pub fn add(t: TimeOfDay, d: Duration) -> TimeOfDay {
   day = Int64.from_int(DAY)
-  ms = (Int64.from_int(t.milliseconds) + Duration.to_milliseconds(d)) % day
-  TimeOfDay(milliseconds: Int64.to_int(if ms < 0 { ms + day } else { ms }))
+  ms = (Int64.from_int(t.milliseconds) + d.to_milliseconds()) % day
+  TimeOfDay(milliseconds: (if ms < 0 { ms + day } else { ms }).to_int())
 }
 
 ## `HH:MM:SS.mmm` (`09:05:00.000`). The milliseconds are always written, so that every time has
 ## the same width and sorts as text in the order of time.
 pub fn to_string(t: TimeOfDay) -> String {
-  "#{pad(hour(t), 2)}:#{pad(minute(t), 2)}:#{pad(second(t), 2)}.#{pad(millisecond(t), 3)}"
+  "#{pad(t.hour(), 2)}:#{pad(t.minute(), 2)}:#{pad(t.second(), 2)}.#{pad(t.millisecond(), 3)}"
 }
 
 ## Reads `HH:MM`, `HH:MM:SS`, or `HH:MM:SS` with a fraction after `.` or `,` of one or more
@@ -69,19 +69,20 @@ pub fn to_string(t: TimeOfDay) -> String {
 ## with `ParseError` if anything else is in `s`, or if a part is out of range (`24:00`,
 ## `23:59:60`).
 pub fn parse(s: String) -> TimeOfDay fails ParseError {
-  time = String.split(s, ":") match {
+  time = s.split(":") match {
     [h, m] -> (digits(h, 2), digits(m, 2)) match {
       (Some(h), Some(m)) -> from_hms(h, m, 0)
       _                  -> None
     }
     [h, m, rest] -> (digits(h, 2), digits(m, 2), seconds(rest)) match {
-      (Some(h), Some(m), Some((sec, ms))) -> from_hms(h, m, sec)
-        |> Option.map(fn(t) { TimeOfDay(milliseconds: t.milliseconds + ms) })
+      (Some(h), Some(m), Some((sec, ms))) -> from_hms(h, m, sec).map(fn(t) {
+        TimeOfDay(milliseconds: t.milliseconds + ms)
+      })
       _ -> None
     }
     _ -> None
   }
-  time |> Option.or_fail(ParseError(input: s))
+  time.or_fail(ParseError(input: s))
 }
 
 ## Shown as `to_string` writes it (`09:05:00.000`).
@@ -91,9 +92,9 @@ impl TimeOfDay: Show {
 
 # `SS`, `SS.f...` or `SS,f...`: the seconds and the milliseconds of the fraction.
 fn seconds(s: String) -> Option[(Int, Int)] {
-  parts = if String.contains(s, ".") { String.split(s, ".") } else { String.split(s, ",") }
+  parts = if s.contains(".") { s.split(".") } else { s.split(",") }
   parts match {
-    [sec] -> digits(sec, 2) |> Option.map(fn(n) { (n, 0) })
+    [sec] -> digits(sec, 2).map(fn(n) { (n, 0) })
     [sec, fraction] -> (digits(sec, 2), milliseconds(fraction)) match {
       (Some(n), Some(ms)) -> Some((n, ms))
       _                   -> None
@@ -104,31 +105,31 @@ fn seconds(s: String) -> Option[(Int, Int)] {
 
 # One or more digits of a fraction of a second, as milliseconds. Digits after the third are dropped.
 fn milliseconds(fraction: String) -> Option[Int] {
-  cps = String.code_points(fraction)
-  if List.is_empty(cps) || !List.all(cps, fn(c) { c >= 48 && c <= 57 }) {
+  cps = fraction.code_points()
+  if cps.is_empty() || !cps.all(fn(c) { c >= 48 && c <= 57 }) {
     None
   } else {
-    first = List.append(List.take(cps, 3), [48, 48, 48]) |> List.take(3)
-    Some(List.fold(first, from: 0, f: fn(n, c) { n * 10 + c - 48 }))
+    first = cps.take(3).append([48, 48, 48]).take(3)
+    Some(first.fold(from: 0, f: fn(n, c) { n * 10 + c - 48 }))
   }
 }
 
 ## The value of `s` if it is exactly `width` ASCII digits.
 fn digits(s: String, width: Int) -> Option[Int] {
-  cps = String.code_points(s)
-  if List.length(cps) != width || !List.all(cps, fn(c) { c >= 48 && c <= 57 }) {
+  cps = s.code_points()
+  if cps.length() != width || !cps.all(fn(c) { c >= 48 && c <= 57 }) {
     None
   } else {
-    Some(List.fold(cps, from: 0, f: fn(n, c) { n * 10 + c - 48 }))
+    Some(cps.fold(from: 0, f: fn(n, c) { n * 10 + c - 48 }))
   }
 }
 
 ## Zero-pads `n` to `width` digits. `n` must be non-negative.
 fn pad(n: Int, width: Int) -> String {
-  pad_onto(Int.to_string(n), width)
+  pad_onto(n.to_string(), width)
 }
 
 # Digits are ASCII, so bytes count them without the grapheme tables (which target c lacks).
 fn pad_onto(s: String, width: Int) -> String {
-  if String.byte_size(s) >= width { s } else { pad_onto("0#{s}", width) }
+  if s.byte_size() >= width { s } else { pad_onto("0#{s}", width) }
 }

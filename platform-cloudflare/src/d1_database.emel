@@ -5,7 +5,6 @@
 # list it after the layer: `with CloudflarePlatform, CloudflareD1(binding: "ANALYTICS") { ... }`.
 
 import Dynamic.{Dynamic, Number, Text, Items}
-import Dynamic.Number
 import Dynamic.Number.{OutOfRange}
 import Json.{SyntaxError}
 import Sql
@@ -48,14 +47,14 @@ pub handler CloudflareD1(binding: String): Sql {
     resume(count(result(d1_execute(self.binding, Json.to_string(encode(statement))))))
   }
   suspend fn batch(statements, resume) {
-    json = Json.to_string(Items(List.map(statements, encode)))
+    json = Json.to_string(Items(statements.map(encode)))
     resume(counts(result(d1_batch(self.binding, json))))
   }
 }
 
 ## A statement as the host reads it, with the parameters as `Sql.scalar_params` gives them.
 fn encode(statement: Statement) -> Dynamic {
-  Dynamic.object([("text", Text(statement.text)), ("params", Items(Sql.scalar_params(statement)))])
+  Dynamic.object([("text", Text(statement.text)), ("params", Items(statement.scalar_params()))])
 }
 
 fn result(o: HostOutcome) -> Dynamic fails SqlError {
@@ -77,7 +76,7 @@ fn rows(d: Dynamic) -> List[Dynamic] {
 
 fn count(d: Dynamic) -> Int {
   d match {
-    Number(n) -> Number.to_int(n) escape {
+    Number(n) -> n.to_int() escape {
       OutOfRange(..) -> panic("D1 gave a count out of range")
     }
     _ -> panic("D1 gave a count that is not a number")
@@ -85,5 +84,5 @@ fn count(d: Dynamic) -> Int {
 }
 
 fn counts(d: Dynamic) -> List[Int] {
-  List.map(rows(d), count)
+  rows(d).map(count)
 }

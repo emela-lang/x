@@ -3,7 +3,7 @@ import Lib.{Dynamic, Fields, Text, Null, Bool, Key, Segment, DecodeError}
 
 fn failed_at(value: Dynamic) -> (String, List[Segment]) {
   {
-    Lib.field(value, "name", Lib.optional(Lib.string))
+    value.field("name", Lib.optional(Lib.string))
     ("", [])
   } escape {
     DecodeError(expected:, path:, ..) -> (expected, path)
@@ -24,7 +24,7 @@ fn reads_a_value_as_some() {
 
 @test
 fn reads_a_missing_key_as_none() {
-  assert Lib.field(Fields(Map.empty()), "name", Lib.optional(Lib.string)) == None
+  assert Fields(Map.empty()).field("name", Lib.optional(Lib.string)) == None
 }
 
 @test

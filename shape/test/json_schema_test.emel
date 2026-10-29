@@ -111,7 +111,7 @@ fn a_named_shape_is_defined_once_with_its_notes() {
   )
   shape = Record(
     name: "Pair",
-    fields: [Field(name: "a", shape: code), Field(name: "b", shape: code |> Lib.description("b"))],
+    fields: [Field(name: "a", shape: code), Field(name: "b", shape: code.description("b"))],
   )
   assert schema_text(shape)
     == "{\"$defs\":{\"Code\":{\"format\":\"x-code\",\"minLength\":3,\"type\":\"string\"},\"Pair\":{\"properties\":{\"a\":{\"$ref\":\"#/$defs/Code\"},\"b\":{\"$ref\":\"#/$defs/Code\",\"description\":\"b\"}},\"required\":[\"a\",\"b\"],\"type\":\"object\"}},\"$ref\":\"#/$defs/Pair\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"

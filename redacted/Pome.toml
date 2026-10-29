@@ -1,7 +1,7 @@
 [pome]
 name = "github.com/emela-lang/x/redacted"
 version = "0.3.0"
-emela = "0.25.0"
+emela = "0.26.0"
 
 [dependencies]
 "github.com/emela-lang/x/dynamic" = "v0.4.0"

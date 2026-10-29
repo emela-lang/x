@@ -2,13 +2,11 @@ import Std.Clock.{Clock, TestClock}
 import Std.Duration.{Duration}
 import Std.Instant.{Instant}
 import Std.State.{State}
-import Date
 import Offset.{Offset}
-import OffsetDateTime
 import Lib
 
 fn jst() -> Offset {
-  Offset.from_hours(9) |> Option.or(Offset.utc())
+  Offset.from_hours(9).or(Offset.utc())
 }
 
 fn at(ms: Int64) -> Instant {
@@ -38,9 +36,9 @@ fn now_and_today_come_from_clock() {
   ((now, utc_day, jst_day), _) = State.run(start, fn() {
     with TestClock {
       (
-        OffsetDateTime.to_string(Lib.now(jst())),
-        Date.to_string(Lib.today(Offset.utc())),
-        Date.to_string(Lib.today(jst())),
+        Lib.now(jst()).to_string(),
+        Lib.today(Offset.utc()).to_string(),
+        Lib.today(jst()).to_string(),
       )
     }
   })
@@ -53,7 +51,7 @@ fn now_moves_with_test_clock() {
   (later, _) = State.run(at(0), fn() {
     with TestClock {
       (use Clock).sleep(90000)
-      OffsetDateTime.to_string(Lib.now(Offset.utc()))
+      Lib.now(Offset.utc()).to_string()
     }
   })
   assert later == "1970-01-01T00:01:30.000Z"
@@ -62,7 +60,7 @@ fn now_moves_with_test_clock() {
 @test
 fn parse_instant_reads_what_instant_writes() {
   t = at(1761696000123)
-  assert instant(Instant.to_string(t)) == Some(t)
+  assert instant(t.to_string()) == Some(t)
   assert instant("2025-10-29T09:00:00.123+09:00") == Some(t)
   assert instant("1969-12-31T23:59:59.999Z") == Some(at(-1))
   assert instant("2025-10-29T00:00:00.123") == None
@@ -75,36 +73,24 @@ fn days_are_24_hours() {
 
 @test
 fn duration_to_string_writes_hours_minutes_seconds() {
-  strings = List.map(
-    [
-      h(1) |> Duration.add(m(30)),
-      ms(500),
-      ms(1050),
-      ms(1005),
-      h(36),
-      ms(0),
-      ms(-1500),
-      m(90) |> Duration.add(ms(1)),
-    ],
-    Lib.duration_to_string,
-  )
+  strings = [
+    h(1).add(m(30)),
+    ms(500),
+    ms(1050),
+    ms(1005),
+    h(36),
+    ms(0),
+    ms(-1500),
+    m(90).add(ms(1)),
+  ].map(Lib.duration_to_string)
   assert strings
     == ["PT1H30M", "PT0.5S", "PT1.05S", "PT1.005S", "PT36H", "PT0S", "-PT1.5S", "PT1H30M0.001S"]
 }
 
 @test
 fn parse_duration_reads_what_duration_to_string_writes() {
-  durations = [
-    h(1) |> Duration.add(m(30)),
-    ms(500),
-    ms(1005),
-    h(36),
-    ms(0),
-    ms(-1500),
-    m(90) |> Duration.add(ms(1)),
-  ]
-  assert List.map(durations, fn(d) { duration(Lib.duration_to_string(d)) })
-    == List.map(durations, Some)
+  durations = [h(1).add(m(30)), ms(500), ms(1005), h(36), ms(0), ms(-1500), m(90).add(ms(1))]
+  assert durations.map(fn(d) { duration(Lib.duration_to_string(d)) }) == durations.map(Some)
 }
 
 @test
@@ -116,9 +102,9 @@ fn parse_duration_reads_days_and_fractions() {
   assert duration("PT1.23456S") == Some(ms(1234))
   assert duration("+PT1S") == Some(ms(1000))
   assert duration("-P1D") == Some(h(-24))
-  assert duration("PT1H1S") == Some(h(1) |> Duration.add(ms(1000)))
+  assert duration("PT1H1S") == Some(h(1).add(ms(1000)))
   assert duration("P9999999999DT9999999999H")
-    == Some(Lib.days(9999999999) |> Duration.add(Duration.hours(9999999999)))
+    == Some(Lib.days(9999999999).add(Duration.hours(9999999999)))
 }
 
 @test

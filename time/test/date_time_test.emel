@@ -4,8 +4,8 @@ import TimeOfDay.{TimeOfDay}
 import DateTime.{DateTime}
 
 fn at(year: Int, month: Int, day: Int, hour: Int, minute: Int) -> DateTime {
-  date = Date.from_calendar(year, month, day) |> Option.or(Date.from_unix_days(0))
-  time = TimeOfDay.from_hms(hour, minute, 0) |> Option.or(TimeOfDay.midnight())
+  date = Date.from_calendar(year, month, day).or(Date.from_unix_days(0))
+  time = TimeOfDay.from_hms(hour, minute, 0).or(TimeOfDay.midnight())
   DateTime(date:, time:)
 }
 
@@ -17,19 +17,19 @@ fn parsed(s: String) -> Option[DateTime] {
 
 @test
 fn add_crosses_days() {
-  assert DateTime.add(at(2026, 12, 31, 23, 30), Duration.hours(1)) == at(2027, 1, 1, 0, 30)
-  assert DateTime.subtract(at(1970, 1, 1, 0, 0), Duration.milliseconds(1))
+  assert at(2026, 12, 31, 23, 30).add(Duration.hours(1)) == at(2027, 1, 1, 0, 30)
+  assert at(1970, 1, 1, 0, 0).subtract(Duration.milliseconds(1))
     == DateTime(
       date: Date.from_unix_days(-1),
-      time: TimeOfDay.from_milliseconds_of_day(86399999) |> Option.or(TimeOfDay.midnight()),
+      time: TimeOfDay.from_milliseconds_of_day(86399999).or(TimeOfDay.midnight()),
     )
-  assert DateTime.since(at(2026, 10, 30, 9, 0), at(2026, 10, 29, 21, 0)) == Duration.hours(12)
+  assert at(2026, 10, 30, 9, 0).since(at(2026, 10, 29, 21, 0)) == Duration.hours(12)
 }
 
 @test
 fn calendar_steps_keep_the_time() {
-  assert DateTime.add_days(at(2026, 10, 29, 9, 0), 3) == at(2026, 11, 1, 9, 0)
-  assert DateTime.add_months(at(2026, 1, 31, 9, 0), 1) == at(2026, 2, 28, 9, 0)
+  assert at(2026, 10, 29, 9, 0).add_days(3) == at(2026, 11, 1, 9, 0)
+  assert at(2026, 1, 31, 9, 0).add_months(1) == at(2026, 2, 28, 9, 0)
 }
 
 @test
@@ -40,7 +40,7 @@ fn compare_by_date_then_time() {
 
 @test
 fn to_string_and_parse() {
-  assert DateTime.to_string(at(2026, 10, 29, 9, 5)) == "2026-10-29T09:05:00.000"
+  assert at(2026, 10, 29, 9, 5).to_string() == "2026-10-29T09:05:00.000"
   assert parsed("2026-10-29T09:05:00.000") == Some(at(2026, 10, 29, 9, 5))
   assert parsed("2026-10-29t09:05") == Some(at(2026, 10, 29, 9, 5))
   assert parsed("2026-10-29 09:05:00") == Some(at(2026, 10, 29, 9, 5))
@@ -59,7 +59,7 @@ fn parse_refuses_a_missing_part_or_an_offset() {
 
 @test
 fn parse_error_has_all_of_the_input() {
-  reported = DateTime.to_string(DateTime.parse("2026-10-29T25:00")) escape {
+  reported = DateTime.parse("2026-10-29T25:00").to_string() escape {
     ParseError(input:) -> input
   }
   assert reported == "2026-10-29T25:00"

@@ -1,7 +1,7 @@
 import Date.{Date, Monday, Thursday, Saturday, Sunday}
 
 fn date(year: Int, month: Int, day: Int) -> Date {
-  Date.from_calendar(year, month, day) |> Option.or(Date.from_unix_days(0))
+  Date.from_calendar(year, month, day).or(Date.from_unix_days(0))
 }
 
 fn parsed(s: String) -> Option[Date] {
@@ -26,71 +26,71 @@ fn from_calendar_checks_the_calendar() {
 @test
 fn the_parts_come_back() {
   d = date(2026, 10, 29)
-  assert (Date.year(d), Date.month(d), Date.day(d)) == (2026, 10, 29)
+  assert (d.year(), d.month(), d.day()) == (2026, 10, 29)
   b = date(-1, 12, 31)
-  assert (Date.year(b), Date.month(b), Date.day(b)) == (-1, 12, 31)
+  assert (b.year(), b.month(), b.day()) == (-1, 12, 31)
 }
 
 @test
 fn unix_days_count_from_1970() {
-  assert Date.to_unix_days(date(1970, 1, 1)) == 0
-  assert Date.to_unix_days(date(1969, 12, 31)) == -1
-  assert Date.to_unix_days(date(2000, 3, 1)) == 11017
+  assert date(1970, 1, 1).to_unix_days() == 0
+  assert date(1969, 12, 31).to_unix_days() == -1
+  assert date(2000, 3, 1).to_unix_days() == 11017
   assert Date.from_unix_days(20390) == date(2025, 10, 29)
 }
 
 @test
 fn weekday_starts_on_monday() {
-  assert Date.weekday(date(1970, 1, 1)) == Thursday
-  assert Date.weekday(date(2026, 10, 29)) == Thursday
-  assert Date.weekday(date(2026, 11, 1)) == Sunday
-  assert Date.weekday(date(1969, 12, 29)) == Monday
-  assert Date.weekday(date(1600, 1, 1)) == Saturday
+  assert date(1970, 1, 1).weekday() == Thursday
+  assert date(2026, 10, 29).weekday() == Thursday
+  assert date(2026, 11, 1).weekday() == Sunday
+  assert date(1969, 12, 29).weekday() == Monday
+  assert date(1600, 1, 1).weekday() == Saturday
   assert Ord.compare(Monday, Sunday) == Less
 }
 
 @test
 fn days_in_month_and_leap_years() {
-  assert Date.days_in_month(date(2024, 2, 1)) == 29
-  assert Date.days_in_month(date(2026, 2, 1)) == 28
-  assert Date.days_in_month(date(2026, 4, 1)) == 30
-  assert Date.days_in_month(date(2026, 12, 1)) == 31
+  assert date(2024, 2, 1).days_in_month() == 29
+  assert date(2026, 2, 1).days_in_month() == 28
+  assert date(2026, 4, 1).days_in_month() == 30
+  assert date(2026, 12, 1).days_in_month() == 31
   assert (Date.is_leap_year(2024), Date.is_leap_year(1900), Date.is_leap_year(2000))
     == (True, False, True)
 }
 
 @test
 fn add_days_crosses_months_and_years() {
-  assert Date.add_days(date(2026, 12, 31), 1) == date(2027, 1, 1)
-  assert Date.add_days(date(2024, 3, 1), -1) == date(2024, 2, 29)
-  assert Date.days_since(date(2027, 1, 1), date(2026, 1, 1)) == 365
-  assert Date.days_since(date(2026, 1, 1), date(2027, 1, 1)) == -365
+  assert date(2026, 12, 31).add_days(1) == date(2027, 1, 1)
+  assert date(2024, 3, 1).add_days(-1) == date(2024, 2, 29)
+  assert date(2027, 1, 1).days_since(date(2026, 1, 1)) == 365
+  assert date(2026, 1, 1).days_since(date(2027, 1, 1)) == -365
 }
 
 @test
 fn add_months_keeps_the_day_or_takes_the_last() {
-  assert Date.add_months(date(2026, 1, 31), 1) == date(2026, 2, 28)
-  assert Date.add_months(date(2024, 1, 31), 1) == date(2024, 2, 29)
-  assert Date.add_months(date(2026, 10, 29), 3) == date(2027, 1, 29)
-  assert Date.add_months(date(2026, 1, 15), -1) == date(2025, 12, 15)
-  assert Date.add_months(date(2026, 3, 31), -13) == date(2025, 2, 28)
-  assert Date.add_years(date(2024, 2, 29), 1) == date(2025, 2, 28)
+  assert date(2026, 1, 31).add_months(1) == date(2026, 2, 28)
+  assert date(2024, 1, 31).add_months(1) == date(2024, 2, 29)
+  assert date(2026, 10, 29).add_months(3) == date(2027, 1, 29)
+  assert date(2026, 1, 15).add_months(-1) == date(2025, 12, 15)
+  assert date(2026, 3, 31).add_months(-13) == date(2025, 2, 28)
+  assert date(2024, 2, 29).add_years(1) == date(2025, 2, 28)
 }
 
 @test
 fn dates_compare_by_day() {
   assert date(2026, 10, 29) < date(2026, 10, 30)
   assert date(-1, 1, 1) < date(0, 1, 1)
-  assert List.sort([date(2026, 1, 2), date(2025, 12, 31), date(2026, 1, 1)])
+  assert [date(2026, 1, 2), date(2025, 12, 31), date(2026, 1, 1)].sort()
     == [date(2025, 12, 31), date(2026, 1, 1), date(2026, 1, 2)]
 }
 
 @test
 fn to_string_writes_iso_8601() {
-  assert Date.to_string(date(2026, 10, 29)) == "2026-10-29"
-  assert Date.to_string(date(5, 1, 2)) == "0005-01-02"
-  assert Date.to_string(date(10000, 1, 1)) == "+010000-01-01"
-  assert Date.to_string(date(-1, 12, 31)) == "-000001-12-31"
+  assert date(2026, 10, 29).to_string() == "2026-10-29"
+  assert date(5, 1, 2).to_string() == "0005-01-02"
+  assert date(10000, 1, 1).to_string() == "+010000-01-01"
+  assert date(-1, 12, 31).to_string() == "-000001-12-31"
   assert inspect(date(2026, 10, 29)) == "2026-10-29"
 }
 
@@ -103,7 +103,7 @@ fn parse_reads_what_to_string_writes() {
     date(-1, 12, 31),
     date(-271821, 4, 20),
   ]
-  assert List.map(for_each, fn(d) { parsed(Date.to_string(d)) }) == List.map(for_each, Some)
+  assert for_each.map(fn(d) { parsed(d.to_string()) }) == for_each.map(Some)
 }
 
 @test

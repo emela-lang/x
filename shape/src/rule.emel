@@ -32,19 +32,19 @@ pub error AllBroken(messages: List[String]) derive Eq, Show
 
 ## At least `n`.
 pub fn at_least(n: Int) -> Rule[Int] {
-  Rule(holds: fn(x) { x >= n }, describe: fn(s) { Lib.minimum(s, n) }, text: "at least #{n}")
+  Rule(holds: fn(x) { x >= n }, describe: fn(s) { s.minimum(n) }, text: "at least #{n}")
 }
 
 ## At most `n`.
 pub fn at_most(n: Int) -> Rule[Int] {
-  Rule(holds: fn(x) { x <= n }, describe: fn(s) { Lib.maximum(s, n) }, text: "at most #{n}")
+  Rule(holds: fn(x) { x <= n }, describe: fn(s) { s.maximum(n) }, text: "at most #{n}")
 }
 
 ## At least `n` code points long. JSON Schema counts the length of a string in code points too.
 pub fn min_length(n: Int) -> Rule[String] {
   Rule(
     holds: fn(s) { code_point_length(s) >= n },
-    describe: fn(s) { Lib.min_length(s, n) },
+    describe: fn(s) { s.min_length(n) },
     text: "at least #{n} characters",
   )
 }
@@ -53,7 +53,7 @@ pub fn min_length(n: Int) -> Rule[String] {
 pub fn max_length(n: Int) -> Rule[String] {
   Rule(
     holds: fn(s) { code_point_length(s) <= n },
-    describe: fn(s) { Lib.max_length(s, n) },
+    describe: fn(s) { s.max_length(n) },
     text: "at most #{n} characters",
   )
 }
@@ -62,7 +62,7 @@ pub fn max_length(n: Int) -> Rule[String] {
 pub fn min_items[A](n: Int) -> Rule[List[A]] {
   Rule(
     holds: fn(xs) { List.length(xs) >= n },
-    describe: fn(s) { Lib.min_items(s, n) },
+    describe: fn(s) { s.min_items(n) },
     text: "at least #{n} items",
   )
 }
@@ -71,7 +71,7 @@ pub fn min_items[A](n: Int) -> Rule[List[A]] {
 pub fn max_items[A](n: Int) -> Rule[List[A]] {
   Rule(
     holds: fn(xs) { List.length(xs) <= n },
-    describe: fn(s) { Lib.max_items(s, n) },
+    describe: fn(s) { s.max_items(n) },
     text: "at most #{n} items",
   )
 }
@@ -89,7 +89,7 @@ pub fn message[A](rule: Rule[A]) -> String {
 
 ## The rules that `value` breaks, in order. Empty when it keeps them all.
 pub fn broken[A](value: A, rules: List[Rule[A]]) -> List[Rule[A]] {
-  List.filter(rules, fn(rule) { !keeps(value, rule) })
+  rules.filter(fn(rule) { !keeps(value, rule) })
 }
 
 ## `value` if it keeps every rule, otherwise fails with the first rule it breaks.
@@ -99,13 +99,13 @@ pub fn check[A](value: A, rules: List[Rule[A]]) -> A fails Broken {
 
 ## `value` if it keeps every rule, otherwise fails with all the rules it breaks.
 pub fn check_all[A](value: A, rules: List[Rule[A]]) -> A fails AllBroken {
-  check_all_or(value, rules, fn(rules) { AllBroken(messages: List.map(rules, message)) })
+  check_all_or(value, rules, fn(rules) { AllBroken(messages: rules.map(message)) })
 }
 
 ## `value` if it keeps every rule, otherwise fails with `to_error` of the first rule it breaks. The
 ## rules after it are not tried.
 pub fn check_or[A, E](value: A, rules: List[Rule[A]], to_error: fn(Rule[A]) -> E) -> A fails E {
-  List.find(rules, fn(rule) { !keeps(value, rule) }) match {
+  rules.find(fn(rule) { !keeps(value, rule) }) match {
     Some(rule) -> fail to_error(rule)
     None       -> value
   }
@@ -122,7 +122,7 @@ pub fn check_all_or[A, E](value: A, rules: List[Rule[A]], to_error: fn(List[Rule
 
 ## `shape` with the notes of `rules`. `custom` rules add none.
 pub fn annotate[A](shape: Shape, rules: List[Rule[A]]) -> Shape {
-  List.fold(rules, from: shape, f: fn(s, rule) {
+  rules.fold(from: shape, f: fn(s, rule) {
     describe = rule.describe
     describe(s)
   })
@@ -134,5 +134,5 @@ fn keeps[A](value: A, rule: Rule[A]) -> Bool {
 }
 
 fn code_point_length(s: String) -> Int {
-  List.length(String.code_points(s))
+  s.code_points().length()
 }

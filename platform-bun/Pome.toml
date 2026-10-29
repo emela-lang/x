@@ -1,7 +1,7 @@
 [pome]
 name = "github.com/emela-lang/x/platform-bun"
 version = "0.1.1"
-emela = "0.25.0"
+emela = "0.26.0"
 module = "Bun"
 targets = ["js"]
 

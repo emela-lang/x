@@ -1,5 +1,4 @@
 import Std.State.{State}
-import Std.Cause
 import Std.Cause.{Die}
 import Std.Fiber.{Success, Failure}
 import Dynamic.{Dynamic, Decode, DecodeErrors, Text, Bool, Items}
@@ -23,20 +22,15 @@ type TodoRow(id: Int, title: String) derive Eq
 # What `derive Decode` is meant to generate.
 impl TodoRow: Decode {
   fn from_dynamic(d) {
-    TodoRow(
-      id: Dynamic.field(d, "id", Decode.from_dynamic),
-      title: Dynamic.field(d, "title", Decode.from_dynamic),
-    )
+    TodoRow(id: d.field("id", Decode.from_dynamic), title: d.field("title", Decode.from_dynamic))
   }
 
   fn from_dynamic_all(d) {
-    id = Dynamic.attempt(fn() { Dynamic.field_all(d, "id", Decode.from_dynamic_all) })
-    title = Dynamic.attempt(fn() { Dynamic.field_all(d, "title", Decode.from_dynamic_all) })
+    id = Dynamic.attempt(fn() { d.field_all("id", Decode.from_dynamic_all) })
+    title = Dynamic.attempt(fn() { d.field_all("title", Decode.from_dynamic_all) })
     (id, title) match {
       (Dynamic.Decoded(id), Dynamic.Decoded(title)) -> TodoRow(id:, title:)
-      _ -> fail DecodeErrors(
-        errors: List.flatten([Dynamic.errors_of(id), Dynamic.errors_of(title)]),
-      )
+      _ -> fail DecodeErrors(errors: [id.errors_of(), title.errors_of()].flatten())
     }
   }
 }
@@ -89,7 +83,7 @@ fn a_row_of_the_wrong_shape_fails_with_every_field() {
   (failure, _) = State.run(answering([bad]), fn() {
     with TestSql {
       read: List[TodoRow] = Lib.all("select * from todos", []) escape {
-        DecodeErrors(errors:) -> fail SqlError(message: "#{List.length(errors)}")
+        DecodeErrors(errors:) -> fail SqlError(message: "#{errors.length()}")
       }
       ""
     } escape {
@@ -220,7 +214,7 @@ fn a_defect_in_a_transaction_rolls_back_and_goes_on() {
     })
     exit match {
       Success(_)     -> None
-      Failure(cause) -> Some(Cause.kind(cause))
+      Failure(cause) -> Some(cause.kind())
     }
   })
   assert kind == Some(Die)

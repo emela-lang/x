@@ -9,7 +9,7 @@ pub error SyntaxError(message: String, offset: Int)
 ## Reads one JSON value, with whitespace allowed around it. For a repeated key in an object,
 ## the later value is kept.
 pub fn parse(s: String) -> Dynamic fails SyntaxError {
-  (value, rest) = element(String.chars(s), 0)
+  (value, rest) = element(s.chars(), 0)
   rest match {
     Rest([], _)     -> value
     Rest(_, offset) -> fail SyntaxError(message: "expected the end of input", offset:)
@@ -25,7 +25,7 @@ pub fn decode[A: Decode](text: String) -> A fails SyntaxError | DecodeError {
 }
 
 pub fn encode[A: Encode](value: A) -> String {
-  Encode.to_dynamic(value) |> to_string()
+  value.to_dynamic() |> to_string()
 }
 
 # The input that is left, and its offset from the start.
@@ -87,7 +87,7 @@ fn members(rest: Rest, fields: Map[String, Dynamic]) -> (Dynamic, Rest) fails Sy
     _             -> fail SyntaxError(message: "expected `:`", offset: colon.offset)
   }
   (value, after_value) = element(after_colon.chars, after_colon.offset)
-  added = Map.insert(fields, key, value)
+  added = fields.insert(key, value)
   after_value.chars match {
     [",", ..more] -> members(Rest(chars: more, offset: after_value.offset + 1), added)
     ["}", ..more] -> (Fields(added), Rest(chars: more, offset: after_value.offset + 1))
@@ -110,7 +110,7 @@ fn items(rest: Rest, reversed: List[Dynamic]) -> (Dynamic, Rest) fails SyntaxErr
   added = [value, ..reversed]
   after.chars match {
     [",", ..more] -> items(Rest(chars: more, offset: after.offset + 1), added)
-    ["]", ..more] -> (Items(List.reverse(added)), Rest(chars: more, offset: after.offset + 1))
+    ["]", ..more] -> (Items(added.reverse()), Rest(chars: more, offset: after.offset + 1))
     _             -> fail SyntaxError(message: "expected `,` or `]`", offset: after.offset)
   }
 }
@@ -118,7 +118,7 @@ fn items(rest: Rest, reversed: List[Dynamic]) -> (Dynamic, Rest) fails SyntaxErr
 # After the opening `"`. Returns the contents and the input after the closing `"`.
 fn string(rest: Rest) -> (String, Rest) fails SyntaxError {
   (reversed, after) = characters(rest, [])
-  (String.concat(List.reverse(reversed)), after)
+  (reversed.reverse().join(""), after)
 }
 
 fn characters(rest: Rest, reversed: List[String]) -> (List[String], Rest) fails SyntaxError {
@@ -140,7 +140,7 @@ fn characters(rest: Rest, reversed: List[String]) -> (List[String], Rest) fails 
 
 # After `\`.
 fn escaped(rest: Rest) -> (String, Rest) fails SyntaxError {
-  next = Rest(chars: List.drop(rest.chars, 1), offset: rest.offset + 1)
+  next = Rest(chars: rest.chars.drop(1), offset: rest.offset + 1)
   rest.chars match {
     ["\"", ..] -> ("\"", next)
     ["\\", ..] -> ("\\", next)
@@ -179,14 +179,14 @@ fn unicode(rest: Rest) -> (String, Rest) fails SyntaxError {
 }
 
 fn hex4(rest: Rest) -> (Int, Rest) fails SyntaxError {
-  digits = List.take(rest.chars, 4)
-  values = List.filter_map(digits, hex)
-  if List.length(values) != 4 {
+  digits = rest.chars.take(4)
+  values = digits.filter_map(hex)
+  if values.length() != 4 {
     fail SyntaxError(message: "expected 4 hexadecimal digits", offset: rest.offset)
   }
   (
-    List.fold(values, 0, fn(acc, d) { acc * 16 + d }),
-    Rest(chars: List.drop(rest.chars, 4), offset: rest.offset + 4),
+    values.fold(0, fn(acc, d) { acc * 16 + d }),
+    Rest(chars: rest.chars.drop(4), offset: rest.offset + 4),
   )
 }
 
@@ -211,7 +211,7 @@ fn number(rest: Rest) -> (Dynamic, Rest) fails SyntaxError {
   n = Number.parse(String.concat(lexeme)) escape {
     ParseError(..) -> fail SyntaxError(message: "invalid number", offset: rest.offset)
   }
-  (Number(n), Rest(chars: more, offset: rest.offset + List.length(lexeme)))
+  (Number(n), Rest(chars: more, offset: rest.offset + lexeme.length()))
 }
 
 fn span(chars: List[String], f: fn(String) -> Bool) -> (List[String], List[String]) {
@@ -229,5 +229,5 @@ fn is_digit(c: String) -> Bool {
 }
 
 fn code_point(c: String) -> Int {
-  List.fold(String.code_points(c), 0, fn(_, p) { p })
+  c.code_points().fold(0, fn(_, p) { p })
 }

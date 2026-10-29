@@ -19,12 +19,9 @@ fn from_minutes_takes_what_rfc_3339_can_write() {
 
 @test
 fn to_string_writes_a_sign_hours_and_minutes() {
-  strings = [540, -330, 0, 1439]
-    |> List.filter_map(Offset.from_minutes)
-    |> List.map(Offset.to_string)
+  strings = [540, -330, 0, 1439].filter_map(Offset.from_minutes).map(Offset.to_string)
   assert strings == ["+09:00", "-05:30", "+00:00", "+23:59"]
-  assert (Offset.from_minutes(-330) |> Option.map(Offset.to_duration))
-    == Some(Duration.minutes(-330))
+  assert Offset.from_minutes(-330).map(Offset.to_duration) == Some(Duration.minutes(-330))
 }
 
 @test

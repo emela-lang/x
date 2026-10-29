@@ -36,7 +36,7 @@ pub fn to_duration(o: Offset) -> Duration {
 ## `+HH:MM` or `-HH:MM`. UTC is `+00:00`; `OffsetDateTime.to_string` writes it as `Z` instead.
 pub fn to_string(o: Offset) -> String {
   sign = if o.minutes < 0 { "-" } else { "+" }
-  n = Int.abs(o.minutes)
+  n = o.minutes.abs()
   "#{sign}#{pad(n / 60, 2)}:#{pad(n % 60, 2)}"
 }
 
@@ -46,14 +46,14 @@ pub fn to_string(o: Offset) -> String {
 pub fn parse(s: String) -> Offset fails ParseError {
   offset = if s == "Z" || s == "z" {
     Some(utc())
-  } else if String.starts_with(s, "+") {
-    after_sign(s, "+") |> Option.map(fn(n) { Offset(minutes: n) })
-  } else if String.starts_with(s, "-") {
-    after_sign(s, "-") |> Option.map(fn(n) { Offset(minutes: 0 - n) })
+  } else if s.starts_with("+") {
+    after_sign(s, "+").map(fn(n) { Offset(minutes: n) })
+  } else if s.starts_with("-") {
+    after_sign(s, "-").map(fn(n) { Offset(minutes: 0 - n) })
   } else {
     None
   }
-  offset |> Option.or_fail(ParseError(input: s))
+  offset.or_fail(ParseError(input: s))
 }
 
 ## Shown as `to_string` writes it (`+09:00`).
@@ -63,8 +63,8 @@ impl Offset: Show {
 
 # The minutes of `HH:MM` after `sign`, which `s` starts with.
 fn after_sign(s: String, sign: String) -> Option[Int] {
-  String.split(s, sign) match {
-    ["", rest] -> String.split(rest, ":") match {
+  s.split(sign) match {
+    ["", rest] -> rest.split(":") match {
       [h, m] -> (digits(h, 2), digits(m, 2)) match {
         (Some(h), Some(m)) -> if h > 23 || m > 59 { None } else { Some(h * 60 + m) }
         _                  -> None
@@ -77,20 +77,20 @@ fn after_sign(s: String, sign: String) -> Option[Int] {
 
 ## The value of `s` if it is exactly `width` ASCII digits.
 fn digits(s: String, width: Int) -> Option[Int] {
-  cps = String.code_points(s)
-  if List.length(cps) != width || !List.all(cps, fn(c) { c >= 48 && c <= 57 }) {
+  cps = s.code_points()
+  if cps.length() != width || !cps.all(fn(c) { c >= 48 && c <= 57 }) {
     None
   } else {
-    Some(List.fold(cps, from: 0, f: fn(n, c) { n * 10 + c - 48 }))
+    Some(cps.fold(from: 0, f: fn(n, c) { n * 10 + c - 48 }))
   }
 }
 
 ## Zero-pads `n` to `width` digits. `n` must be non-negative.
 fn pad(n: Int, width: Int) -> String {
-  pad_onto(Int.to_string(n), width)
+  pad_onto(n.to_string(), width)
 }
 
 # Digits are ASCII, so bytes count them without the grapheme tables (which target c lacks).
 fn pad_onto(s: String, width: Int) -> String {
-  if String.byte_size(s) >= width { s } else { pad_onto("0#{s}", width) }
+  if s.byte_size() >= width { s } else { pad_onto("0#{s}", width) }
 }

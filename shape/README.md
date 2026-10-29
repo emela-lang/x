@@ -25,7 +25,7 @@ impl MemberPath: Shaped {
 
 fn show_member(path: MemberPath) -> String { path.member_id }
 
-Shape.field_names(Shape.of_parameter(show_member)) # ["team_id", "member_id"]
+Shape.of_parameter(show_member).field_names() # ["team_id", "member_id"]
 ```
 
 ## 仕組み

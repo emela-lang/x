@@ -16,71 +16,70 @@ const DAY: Int = 86400000
 ## The DateTime `d` later; earlier if `d` is negative. Every day is 24 hours long, as there is no
 ## time zone.
 pub fn add(dt: DateTime, d: Duration) -> DateTime {
-  from_local_milliseconds(to_local_milliseconds(dt) + Duration.to_milliseconds(d))
+  from_local_milliseconds(dt.to_local_milliseconds() + d.to_milliseconds())
 }
 
 pub fn subtract(dt: DateTime, d: Duration) -> DateTime {
-  from_local_milliseconds(to_local_milliseconds(dt) - Duration.to_milliseconds(d))
+  from_local_milliseconds(dt.to_local_milliseconds() - d.to_milliseconds())
 }
 
 ## The duration from `earlier` to `dt`; negative if `earlier` is later.
-## Reads as `end |> DateTime.since(start)`.
+## Reads as `end.since(start)`.
 pub fn since(dt: DateTime, earlier: DateTime) -> Duration {
-  Duration.milliseconds(to_local_milliseconds(dt) - to_local_milliseconds(earlier))
+  Duration.milliseconds(dt.to_local_milliseconds() - earlier.to_local_milliseconds())
 }
 
 ## The same time `n` days later; earlier if `n` is negative.
 pub fn add_days(dt: DateTime, n: Int) -> DateTime {
-  DateTime(date: Date.add_days(dt.date, n), time: dt.time)
+  DateTime(date: dt.date.add_days(n), time: dt.time)
 }
 
 ## The same time `n` months later, on the day `Date.add_months` gives.
 pub fn add_months(dt: DateTime, n: Int) -> DateTime {
-  DateTime(date: Date.add_months(dt.date, n), time: dt.time)
+  DateTime(date: dt.date.add_months(n), time: dt.time)
 }
 
 ## The milliseconds from 1970-01-01T00:00:00.000 to `dt`, as if the clock were in UTC. With an
 ## offset, this minus the offset is the Unix time (OffsetDateTime does it).
 pub fn to_local_milliseconds(dt: DateTime) -> Int64 {
-  Date.to_unix_days(dt.date) * Int64.from_int(DAY)
-    + Int64.from_int(TimeOfDay.to_milliseconds_of_day(dt.time))
+  dt.date.to_unix_days() * Int64.from_int(DAY) + Int64.from_int(dt.time.to_milliseconds_of_day())
 }
 
 ## The inverse of `to_local_milliseconds`.
 pub fn from_local_milliseconds(ms: Int64) -> DateTime {
   day = Int64.from_int(DAY)
   days = if ms >= 0 { ms / day } else { (ms - day + 1) / day }
-  of_day = Int64.to_int(ms - days * day)
-  time = TimeOfDay.from_milliseconds_of_day(of_day) |> Option.or(TimeOfDay.midnight())
+  of_day = (ms - days * day).to_int()
+  time = TimeOfDay.from_milliseconds_of_day(of_day).or(TimeOfDay.midnight())
   DateTime(date: Date.from_unix_days(days), time:)
 }
 
 ## `YYYY-MM-DDTHH:MM:SS.mmm`, the date as `Date.to_string` and the time as `TimeOfDay.to_string`
 ## write them.
 pub fn to_string(dt: DateTime) -> String {
-  "#{Date.to_string(dt.date)}T#{TimeOfDay.to_string(dt.time)}"
+  "#{dt.date.to_string()}T#{dt.time.to_string()}"
 }
 
 ## Reads a date as `Date.parse` does and a time as `TimeOfDay.parse` does, between them `T`, `t`
 ## or a space. Fails with `ParseError` (whose `input` is all of `s`) if either part does.
 pub fn parse(s: String) -> DateTime fails ParseError {
-  (date, time) = split(s) |> Option.or_fail(ParseError(input: s))
+  (date, time) = split(s).or_fail(ParseError(input: s))
   parsed = Some(DateTime(date: Date.parse(date), time: TimeOfDay.parse(time))) escape {
     ParseError(_) -> None
   }
-  parsed |> Option.or_fail(ParseError(input: s))
+  parsed.or_fail(ParseError(input: s))
 }
 
 # The date and the time of `s`, at its `T`, `t` or space.
 fn split(s: String) -> Option[(String, String)] {
-  separator = if String.contains(s, "T") {
+  separator = if s.contains("T") {
     "T"
-  } else if String.contains(s, "t") {
+  } else if s.contains("t") {
     "t"
   } else {
     " "
   }
-  String.split(s, separator) match {
+  s.split(separator) match {
     [date, rest] -> Some((date, rest))
     _            -> None
   }

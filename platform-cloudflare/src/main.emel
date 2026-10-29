@@ -26,12 +26,12 @@ pub fn app(request: Request) -> Response {
 
 fn route(request: Request) -> Response use { Console, Env, Kv, Sql } {
   (use Console).print_line("#{request.method} #{request.url}")
-  (request.method, Request.segments(request)) match {
+  (request.method, request.segments()) match {
     (Get, []) -> {
       kv = use Kv
-      count = kv.get("visits") |> Option.and_then(parse_count) |> Option.or(0)
-      kv.put("visits", Int.to_string(count + 1))
-      greeting = (use Env).get("GREETING") |> Option.or("hello")
+      count = kv.get("visits").and_then(parse_count).or(0)
+      kv.put("visits", (count + 1).to_string())
+      greeting = (use Env).get("GREETING").or("hello")
       Response.new(200, "#{greeting} from Emela (visit ##{count + 1})\n")
     }
     (Get, ["hello", who]) -> Response.new(200, "hello, #{who}\n")
@@ -51,13 +51,13 @@ type Note(body: String)
 # What `derive Decode` is meant to generate.
 impl Note: Decode {
   fn from_dynamic(d) {
-    Note(body: Dynamic.field(d, "body", Decode.from_dynamic))
+    Note(body: d.field("body", Decode.from_dynamic))
   }
 }
 
 fn notes() -> Response fails SqlError | DecodeErrors use { Sql } {
   found: List[Note] = Sql.all("select body from notes order by id", [])
-  Response.new(200, List.map(found, fn(n) { "#{n.body}\n" }) |> String.join(""))
+  Response.new(200, found.map(fn(n) { "#{n.body}\n" }).join(""))
 }
 
 fn add_note(body: String) -> Response fails SqlError use { Sql } {

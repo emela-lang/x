@@ -146,7 +146,7 @@ fn types_that_refer_to_each_other_end_at_the_first_repeat() {
       ],
     )
   m: Option[Member] = None
-  assert Lib.field_names(Shaped.shape(m)) == ["name", "team"]
+  assert Shaped.shape(m).field_names() == ["name", "team"]
 }
 
 @test
@@ -167,16 +167,16 @@ fn a_proxy_needs_no_value() {
 @test
 fn a_record_lists_its_fields_in_order() {
   p: Option[Order] = None
-  assert Lib.field_names(Shaped.shape(p)) == ["id", "quantity", "tags", "note"]
+  assert Shaped.shape(p).field_names() == ["id", "quantity", "tags", "note"]
 }
 
 @test
 fn a_note_is_read_back() {
   p: Option[Quantity] = None
   shape = Shaped.shape(p)
-  assert Lib.strip(shape) == Int
-  assert Lib.note(shape, "minimum") == Some(Number(Number.from_int(1)))
-  assert Lib.note(shape, "maximum") == None
+  assert shape.strip() == Int
+  assert shape.note("minimum") == Some(Number(Number.from_int(1)))
+  assert shape.note("maximum") == None
   assert Lib.note(Int, "minimum") == None
 }
 
@@ -196,8 +196,8 @@ fn annotate_replaces_a_note_of_the_same_name() {
 @test
 fn field_names_look_through_notes() {
   p: Option[Order] = None
-  annotated = Shaped.shape(p) |> Lib.annotate("description", Text("an order"))
-  assert Lib.field_names(annotated) == ["id", "quantity", "tags", "note"]
+  annotated = Shaped.shape(p).annotate("description", Text("an order"))
+  assert annotated.field_names() == ["id", "quantity", "tags", "note"]
   assert Lib.field_names(Int) == []
 }
 
@@ -207,7 +207,7 @@ fn a_recursive_type_refers_to_itself_by_name() {
   Shaped.shape(p) match {
     Variants(name:, variants:) -> {
       assert name == "Tree"
-      assert List.map(variants, fn(v) { v.name }) == ["Leaf", "Pair", "Node"]
+      assert variants.map(fn(v) { v.name }) == ["Leaf", "Pair", "Node"]
     }
     _ -> assert False
   }
@@ -224,7 +224,7 @@ fn handle(order: Order) -> Int use Orders {
 
 @test
 fn the_parameter_of_a_function_with_effects() {
-  assert Lib.field_names(Lib.of_parameter(handle)) == ["id", "quantity", "tags", "note"]
+  assert Lib.of_parameter(handle).field_names() == ["id", "quantity", "tags", "note"]
 }
 
 type Page[A](items: List[A], next: Option[String])
@@ -250,9 +250,9 @@ impl Page[A: Shaped]: Shaped {
 @test
 fn a_name_carries_the_type_arguments() {
   p: Option[Page[Order]] = None
-  assert Lib.name_of(Shaped.shape(p)) == "Page[Order]"
+  assert Shaped.shape(p).name_of() == "Page[Order]"
   q: Option[Map[String, List[Int]]] = None
-  assert Lib.name_of(Shaped.shape(q)) == "Map[String, List[Int]]"
+  assert Shaped.shape(q).name_of() == "Map[String, List[Int]]"
   assert Lib.generic_name("Page", []) == "Page"
 }
 
@@ -271,21 +271,21 @@ impl Code: Shaped {
 @test
 fn notes_are_read_through_a_name() {
   p: Option[Code] = None
-  shape = Shaped.shape(p) |> Lib.description("a code")
-  assert Lib.name_of(shape) == "Code"
-  assert Lib.strip(shape) == String
-  assert Lib.note(shape, "description") == Some(Text("a code"))
-  assert Lib.note(shape, "min_length") == Some(Number(Number.from_int(3)))
-  assert Lib.note(shape, "pattern") == Some(Text("^[A-Z]+$"))
+  shape = Shaped.shape(p).description("a code")
+  assert shape.name_of() == "Code"
+  assert shape.strip() == String
+  assert shape.note("description") == Some(Text("a code"))
+  assert shape.note("min_length") == Some(Number(Number.from_int(3)))
+  assert shape.note("pattern") == Some(Text("^[A-Z]+$"))
 }
 
 @test
 fn bounds_are_written_as_notes() {
   shape = Lib.Int |> Lib.minimum(1) |> Lib.maximum(99)
-  assert Lib.note(shape, "minimum") == Some(Number(Number.from_int(1)))
-  assert Lib.note(shape, "maximum") == Some(Number(Number.from_int(99)))
+  assert shape.note("minimum") == Some(Number(Number.from_int(1)))
+  assert shape.note("maximum") == Some(Number(Number.from_int(99)))
   text = Lib.String |> Lib.min_length(1) |> Lib.max_length(80)
-  assert Lib.note(text, "max_length") == Some(Number(Number.from_int(80)))
-  items = Lib.List(Lib.String) |> Lib.min_items(1) |> Lib.max_items(10)
-  assert Lib.note(items, "min_items") == Some(Number(Number.from_int(1)))
+  assert text.note("max_length") == Some(Number(Number.from_int(80)))
+  items = Lib.List(Lib.String).min_items(1).max_items(10)
+  assert items.note("min_items") == Some(Number(Number.from_int(1)))
 }

@@ -3,22 +3,22 @@ import Lib
 
 @test
 fn reads_a_long_array() {
-  s = "[#{String.join(List.map(List.range(0, 100000), fn(_) { "1" }), ",")}]"
+  s = "[#{List.range(0, 100000).map(fn(_) { "1" }).join(",")}]"
   Lib.parse(s) match {
-    Items(xs) -> assert List.length(xs) == 100000
+    Items(xs) -> assert xs.length() == 100000
     _         -> assert False
   }
 }
 
 @test
 fn reads_a_long_string() {
-  s = String.concat(List.map(List.range(0, 100000), fn(_) { "a" }))
+  s = List.range(0, 100000).map(fn(_) { "a" }).join("")
   assert Lib.parse("\"#{s}\"") == Text(s)
 }
 
 @test
 fn reads_deep_nesting() {
-  open = String.concat(List.map(List.range(0, 1000), fn(_) { "[" }))
-  close = String.concat(List.map(List.range(0, 1000), fn(_) { "]" }))
+  open = List.range(0, 1000).map(fn(_) { "[" }).join("")
+  close = List.range(0, 1000).map(fn(_) { "]" }).join("")
   Lib.parse("#{open}#{close}")
 }

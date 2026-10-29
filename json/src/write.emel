@@ -1,6 +1,4 @@
-import Std.Map
 import Dynamic.{Dynamic, Null, Bool, Number, Text, Items, Fields}
-import Dynamic.Number
 
 # Writes `value` without whitespace. Keys come in the order of the Map. A string escapes `"`,
 # `\` and the control characters, and keeps every other character as it is.
@@ -8,18 +6,18 @@ pub fn write(value: Dynamic) -> String {
   value match {
     Null      -> "null"
     Bool(b)   -> if b { "true" } else { "false" }
-    Number(n) -> Number.to_string(n)
+    Number(n) -> n.to_string()
     Text(s)   -> quote(s)
-    Items(xs) -> "[#{String.join(List.map(xs, write), ",")}]"
+    Items(xs) -> "[#{xs.map(write).join(",")}]"
     Fields(m) -> {
-      members = List.map(Map.to_list(m), fn((key, x)) { "#{quote(key)}:#{write(x)}" })
-      "{#{String.join(members, ",")}}"
+      members = m.to_list().map(fn((key, x)) { "#{quote(key)}:#{write(x)}" })
+      "{#{members.join(",")}}"
     }
   }
 }
 
 fn quote(s: String) -> String {
-  "\"#{String.concat(List.map(String.chars(s), escaped))}\""
+  "\"#{s.chars().map(escaped).join("")}\""
 }
 
 fn escaped(c: String) -> String {
@@ -32,12 +30,12 @@ fn escaped(c: String) -> String {
     "\u{8}" -> "\\b"
     "\u{c}" -> "\\f"
     _ -> {
-      p = List.fold(String.code_points(c), 0, fn(_, p) { p })
+      p = c.code_points().fold(0, fn(_, p) { p })
       if p < 32 { "\\u00#{hex(p / 16)}#{hex(p % 16)}" } else { c }
     }
   }
 }
 
 fn hex(d: Int) -> String {
-  List.get(String.chars("0123456789abcdef"), d) |> Option.or("0")
+  "0123456789abcdef".chars().get(d).or("0")
 }

@@ -3,7 +3,7 @@ import Lib.{Dynamic, Fields, Text, Null, Items, Number, Key, Segment, DecodeErro
 
 fn failure(value: Dynamic) -> (String, List[Segment]) {
   {
-    Lib.tag(value)
+    value.tag()
     ("", [])
   } escape {
     DecodeError(expected:, path:, ..) -> (expected, path)
@@ -13,7 +13,7 @@ fn failure(value: Dynamic) -> (String, List[Segment]) {
 @test
 fn reads_the_tag() {
   value = Fields(Map.from_list([("tag", Text("Circle")), ("value", Fields(Map.empty()))]))
-  assert Lib.tag(value) == "Circle"
+  assert value.tag() == "Circle"
 }
 
 @test

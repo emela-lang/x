@@ -7,15 +7,14 @@ import Std.Clock.{Clock}
 import Time
 import Time.Date.{Date}
 import Time.Offset
-import Time.OffsetDateTime
 
 fn stamp() -> String use { Clock } {
-  jst = Offset.from_hours(9) |> Option.or(Offset.utc())
-  Time.now(jst) |> OffsetDateTime.to_string # "2026-10-29T09:00:00.000+09:00"
+  jst = Offset.from_hours(9).or(Offset.utc())
+  Time.now(jst).to_string() # "2026-10-29T09:00:00.000+09:00"
 }
 
 fn due(s: String) -> Date fails ParseError {
-  Date.parse(s) |> Date.add_months(1) # "2026-01-31" なら 2026-02-28
+  Date.parse(s).add_months(1) # "2026-01-31" なら 2026-02-28
 }
 ```
 
@@ -58,14 +57,13 @@ UTC と固定オフセットだけを持ち，IANA の tz データベース（`
 version 7 の UUID は先頭 48 ビットに Unix ミリ秒を持つ．x/uuid は Clock の `Instant` から作り，`timestamp(u)` で `Some(Instant)` を返すので，ここの関数とは Instant でつながる．
 
 ```emela
-import Std.Instant.{Instant}
 import Time
 import Time.Offset
 import Time.OffsetDateTime
 
 # UUID が作られた時刻を RFC 3339 で
-Uuid.timestamp(u) |> Option.map(fn(t) { OffsetDateTime.from_instant(t, Offset.utc()) |> OffsetDateTime.to_string })
+Uuid.timestamp(u).map(fn(t) { OffsetDateTime.from_instant(t, Offset.utc()).to_string() })
 
 # RFC 3339 の文字列を Unix ミリ秒に
-Time.parse_instant("2025-10-29T00:00:00.123Z") |> Instant.to_unix_milliseconds # 1761696000123
+Time.parse_instant("2025-10-29T00:00:00.123Z").to_unix_milliseconds() # 1761696000123
 ```
