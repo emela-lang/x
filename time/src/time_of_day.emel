@@ -1,0 +1,134 @@
+# A time on a clock face, from 00:00:00.000 to 23:59:59.999, with no date and no time zone (an
+# opening hour, an alarm). It is counted in milliseconds, as Std.Instant is.
+#
+# There is no leap second: `23:59:60` is not a TimeOfDay, as Std.Instant does not count them.
+
+import Std.Duration.{Duration}
+
+## Inside it is the number of milliseconds since midnight, so Eq and Ord are by time.
+pub opaque type TimeOfDay(milliseconds: Int)
+  derive Eq, Ord
+
+const DAY: Int = 86400000
+
+## 00:00:00.000.
+pub fn midnight() -> TimeOfDay {
+  TimeOfDay(milliseconds: 0)
+}
+
+## The time `hour` (0 to 23), `minute` (0 to 59), `second` (0 to 59), or `None` if one is out of
+## range.
+pub fn from_hms(hour: Int, minute: Int, second: Int) -> Option[TimeOfDay] {
+  if hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59 {
+    None
+  } else {
+    Some(TimeOfDay(milliseconds: ((hour * 60 + minute) * 60 + second) * 1000))
+  }
+}
+
+## The time `n` milliseconds after midnight, or `None` unless `n` is 0 to 86399999.
+pub fn from_milliseconds_of_day(n: Int) -> Option[TimeOfDay] {
+  if n < 0 || n >= DAY { None } else { Some(TimeOfDay(milliseconds: n)) }
+}
+
+pub fn to_milliseconds_of_day(t: TimeOfDay) -> Int {
+  t.milliseconds
+}
+
+pub fn hour(t: TimeOfDay) -> Int {
+  t.milliseconds / 3600000
+}
+
+pub fn minute(t: TimeOfDay) -> Int {
+  t.milliseconds / 60000 % 60
+}
+
+pub fn second(t: TimeOfDay) -> Int {
+  t.milliseconds / 1000 % 60
+}
+
+pub fn millisecond(t: TimeOfDay) -> Int {
+  t.milliseconds % 1000
+}
+
+## Goes round the clock: `23:00` plus two hours is `01:00`. Earlier if `d` is negative.
+pub fn add(t: TimeOfDay, d: Duration) -> TimeOfDay {
+  day = Int64.from_int(DAY)
+  ms = (Int64.from_int(t.milliseconds) + Duration.to_milliseconds(d)) % day
+  TimeOfDay(milliseconds: Int64.to_int(if ms < 0 { ms + day } else { ms }))
+}
+
+## `HH:MM:SS.mmm` (`09:05:00.000`). The milliseconds are always written, so that every time has
+## the same width and sorts as text in the order of time.
+pub fn to_string(t: TimeOfDay) -> String {
+  "#{pad(hour(t), 2)}:#{pad(minute(t), 2)}:#{pad(second(t), 2)}.#{pad(millisecond(t), 3)}"
+}
+
+## Reads `HH:MM`, `HH:MM:SS`, or `HH:MM:SS` with a fraction after `.` or `,` of one or more
+## digits. Digits after the third of the fraction are dropped (truncated toward midnight). Fails
+## with `ParseError` if anything else is in `s`, or if a part is out of range (`24:00`,
+## `23:59:60`).
+pub fn parse(s: String) -> TimeOfDay fails ParseError {
+  time = String.split(s, ":") match {
+    [h, m] -> (digits(h, 2), digits(m, 2)) match {
+      (Some(h), Some(m)) -> from_hms(h, m, 0)
+      _                  -> None
+    }
+    [h, m, rest] -> (digits(h, 2), digits(m, 2), seconds(rest)) match {
+      (Some(h), Some(m), Some((sec, ms))) -> from_hms(h, m, sec)
+        |> Option.map(fn(t) { TimeOfDay(milliseconds: t.milliseconds + ms) })
+      _ -> None
+    }
+    _ -> None
+  }
+  time |> Option.or_fail(ParseError(input: s))
+}
+
+## Shown as `to_string` writes it (`09:05:00.000`).
+impl TimeOfDay: Show {
+  fn show(self) { to_string(self) }
+}
+
+# `SS`, `SS.f...` or `SS,f...`: the seconds and the milliseconds of the fraction.
+fn seconds(s: String) -> Option[(Int, Int)] {
+  parts = if String.contains(s, ".") { String.split(s, ".") } else { String.split(s, ",") }
+  parts match {
+    [sec] -> digits(sec, 2) |> Option.map(fn(n) { (n, 0) })
+    [sec, fraction] -> (digits(sec, 2), milliseconds(fraction)) match {
+      (Some(n), Some(ms)) -> Some((n, ms))
+      _                   -> None
+    }
+    _     -> None
+  }
+}
+
+# One or more digits of a fraction of a second, as milliseconds. Digits after the third are dropped.
+fn milliseconds(fraction: String) -> Option[Int] {
+  cps = String.code_points(fraction)
+  if List.is_empty(cps) || !List.all(cps, fn(c) { c >= 48 && c <= 57 }) {
+    None
+  } else {
+    first = List.append(List.take(cps, 3), [48, 48, 48]) |> List.take(3)
+    Some(List.fold(first, from: 0, f: fn(n, c) { n * 10 + c - 48 }))
+  }
+}
+
+## The value of `s` if it is exactly `width` ASCII digits.
+fn digits(s: String, width: Int) -> Option[Int] {
+  cps = String.code_points(s)
+  if List.length(cps) != width || !List.all(cps, fn(c) { c >= 48 && c <= 57 }) {
+    None
+  } else {
+    Some(List.fold(cps, from: 0, f: fn(n, c) { n * 10 + c - 48 }))
+  }
+}
+
+## Zero-pads `n` to `width` digits. `n` must be non-negative.
+fn pad(n: Int, width: Int) -> String {
+  pad_onto(Int.to_string(n), width)
+}
+
+# Digits are ASCII, so bytes count them without the grapheme tables (which target c lacks).
+fn pad_onto(s: String, width: Int) -> String {
+  if String.byte_size(s) >= width { s } else { pad_onto("0#{s}", width) }
+}

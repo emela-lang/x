@@ -1,0 +1,92 @@
+# A date and a time on a clock face, with no time zone (`2026-10-29T09:00:00.000`). It is what a
+# wall clock shows somewhere, not a point in time: the same DateTime is a different Instant in
+# Tokyo and in London. Keep one with its time zone (OffsetDateTime, or a DateTime with a time zone
+# kept beside it) when it has to become an Instant.
+
+import Std.Duration.{Duration}
+import Date.{Date}
+import TimeOfDay.{TimeOfDay}
+
+## Every pair is a valid DateTime. Eq and Ord are by date and then by time, which is by time.
+pub type DateTime(date: Date, time: TimeOfDay)
+  derive Eq, Ord
+
+const DAY: Int = 86400000
+
+## The DateTime `d` later; earlier if `d` is negative. Every day is 24 hours long, as there is no
+## time zone.
+pub fn add(dt: DateTime, d: Duration) -> DateTime {
+  from_local_milliseconds(to_local_milliseconds(dt) + Duration.to_milliseconds(d))
+}
+
+pub fn subtract(dt: DateTime, d: Duration) -> DateTime {
+  from_local_milliseconds(to_local_milliseconds(dt) - Duration.to_milliseconds(d))
+}
+
+## The duration from `earlier` to `dt`; negative if `earlier` is later.
+## Reads as `end |> DateTime.since(start)`.
+pub fn since(dt: DateTime, earlier: DateTime) -> Duration {
+  Duration.milliseconds(to_local_milliseconds(dt) - to_local_milliseconds(earlier))
+}
+
+## The same time `n` days later; earlier if `n` is negative.
+pub fn add_days(dt: DateTime, n: Int) -> DateTime {
+  DateTime(date: Date.add_days(dt.date, n), time: dt.time)
+}
+
+## The same time `n` months later, on the day `Date.add_months` gives.
+pub fn add_months(dt: DateTime, n: Int) -> DateTime {
+  DateTime(date: Date.add_months(dt.date, n), time: dt.time)
+}
+
+## The milliseconds from 1970-01-01T00:00:00.000 to `dt`, as if the clock were in UTC. With an
+## offset, this minus the offset is the Unix time (OffsetDateTime does it).
+pub fn to_local_milliseconds(dt: DateTime) -> Int64 {
+  Date.to_unix_days(dt.date) * Int64.from_int(DAY)
+    + Int64.from_int(TimeOfDay.to_milliseconds_of_day(dt.time))
+}
+
+## The inverse of `to_local_milliseconds`.
+pub fn from_local_milliseconds(ms: Int64) -> DateTime {
+  day = Int64.from_int(DAY)
+  days = if ms >= 0 { ms / day } else { (ms - day + 1) / day }
+  of_day = Int64.to_int(ms - days * day)
+  time = TimeOfDay.from_milliseconds_of_day(of_day) |> Option.or(TimeOfDay.midnight())
+  DateTime(date: Date.from_unix_days(days), time:)
+}
+
+## `YYYY-MM-DDTHH:MM:SS.mmm`, the date as `Date.to_string` and the time as `TimeOfDay.to_string`
+## write them.
+pub fn to_string(dt: DateTime) -> String {
+  "#{Date.to_string(dt.date)}T#{TimeOfDay.to_string(dt.time)}"
+}
+
+## Reads a date as `Date.parse` does and a time as `TimeOfDay.parse` does, between them `T`, `t`
+## or a space. Fails with `ParseError` (whose `input` is all of `s`) if either part does.
+pub fn parse(s: String) -> DateTime fails ParseError {
+  (date, time) = split(s) |> Option.or_fail(ParseError(input: s))
+  parsed = Some(DateTime(date: Date.parse(date), time: TimeOfDay.parse(time))) escape {
+    ParseError(_) -> None
+  }
+  parsed |> Option.or_fail(ParseError(input: s))
+}
+
+# The date and the time of `s`, at its `T`, `t` or space.
+fn split(s: String) -> Option[(String, String)] {
+  separator = if String.contains(s, "T") {
+    "T"
+  } else if String.contains(s, "t") {
+    "t"
+  } else {
+    " "
+  }
+  String.split(s, separator) match {
+    [date, rest] -> Some((date, rest))
+    _            -> None
+  }
+}
+
+## Shown as `to_string` writes it (`2026-10-29T09:00:00.000`).
+impl DateTime: Show {
+  fn show(self) { to_string(self) }
+}

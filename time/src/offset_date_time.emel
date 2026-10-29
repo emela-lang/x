@@ -1,0 +1,129 @@
+# A date and a time with the offset from UTC they were read in (`2026-10-29T09:00:00.000+09:00`):
+# what RFC 3339 writes. It is a point in time, so it converts to and from Std.Instant without
+# loss, and it keeps the local time, so it can be written back as it was read.
+#
+# The Instant is the meeting point with the rest of the program: Clock gives one, and so does
+# x/uuid for a version 7 UUID. `Instant.from_unix_milliseconds` and `Instant.to_unix_milliseconds`
+# go to and from Unix milliseconds.
+#
+# ```emela
+# import Std.Instant.{Instant}
+# import Time.Offset
+# import Time.OffsetDateTime
+#
+# OffsetDateTime.from_instant(Instant.from_unix_milliseconds(ms), Offset.utc())
+#   |> OffsetDateTime.to_string # 2026-10-29T00:00:00.000Z
+# ```
+
+import Std.Duration.{Duration}
+import Std.Instant.{Instant}
+import Date.{Date}
+import TimeOfDay.{TimeOfDay}
+import DateTime.{DateTime}
+import Offset.{Offset}
+
+## Every pair is a valid OffsetDateTime. Eq is by both: `09:00+09:00` and `00:00Z` are the same
+## point in time but not equal; compare `to_instant` for that. Ord is by point in time, and then by
+## local time, so that it agrees with Eq.
+pub type OffsetDateTime(local: DateTime, offset: Offset)
+  derive Eq
+
+## The local time at `t` in `offset`.
+pub fn from_instant(t: Instant, offset: Offset) -> OffsetDateTime {
+  ms = Instant.to_unix_milliseconds(t) + Duration.to_milliseconds(Offset.to_duration(offset))
+  OffsetDateTime(local: DateTime.from_local_milliseconds(ms), offset:)
+}
+
+pub fn to_instant(odt: OffsetDateTime) -> Instant {
+  ms = DateTime.to_local_milliseconds(odt.local) - Duration.to_milliseconds(
+      Offset.to_duration(odt.offset),
+    )
+  Instant.from_unix_milliseconds(ms)
+}
+
+## The same point in time in `offset`: `09:00+09:00` in UTC is `00:00Z`.
+pub fn with_offset(odt: OffsetDateTime, offset: Offset) -> OffsetDateTime {
+  from_instant(to_instant(odt), offset)
+}
+
+pub fn date(odt: OffsetDateTime) -> Date {
+  odt.local.date
+}
+
+pub fn time(odt: OffsetDateTime) -> TimeOfDay {
+  odt.local.time
+}
+
+## `d` later, in the same offset; earlier if `d` is negative.
+pub fn add(odt: OffsetDateTime, d: Duration) -> OffsetDateTime {
+  OffsetDateTime(local: DateTime.add(odt.local, d), offset: odt.offset)
+}
+
+pub fn subtract(odt: OffsetDateTime, d: Duration) -> OffsetDateTime {
+  OffsetDateTime(local: DateTime.subtract(odt.local, d), offset: odt.offset)
+}
+
+## The duration from `earlier` to `odt`, whatever their offsets; negative if `earlier` is later.
+## Reads as `end |> OffsetDateTime.since(start)`.
+pub fn since(odt: OffsetDateTime, earlier: OffsetDateTime) -> Duration {
+  to_instant(odt) |> Instant.since(to_instant(earlier))
+}
+
+## The same local time `n` days later, in the same offset.
+pub fn add_days(odt: OffsetDateTime, n: Int) -> OffsetDateTime {
+  OffsetDateTime(local: DateTime.add_days(odt.local, n), offset: odt.offset)
+}
+
+## The same local time `n` months later, on the day `Date.add_months` gives, in the same offset.
+pub fn add_months(odt: OffsetDateTime, n: Int) -> OffsetDateTime {
+  OffsetDateTime(local: DateTime.add_months(odt.local, n), offset: odt.offset)
+}
+
+## RFC 3339 (`2026-10-29T09:00:00.000+09:00`), with the milliseconds always written. UTC is written
+## `Z`, so in UTC this is what `Instant.to_string` writes for the same point in time.
+pub fn to_string(odt: OffsetDateTime) -> String {
+  offset = if odt.offset == Offset.utc() { "Z" } else { Offset.to_string(odt.offset) }
+  "#{DateTime.to_string(odt.local)}#{offset}"
+}
+
+## Reads RFC 3339: a DateTime as `DateTime.parse` reads it, then an offset as `Offset.parse` reads
+## it. This takes a little more than RFC 3339 does (a time without seconds, years with a sign and
+## six digits), and nothing without an offset. Fails with `ParseError` (whose `input` is all of
+## `s`) otherwise.
+pub fn parse(s: String) -> OffsetDateTime fails ParseError {
+  (local, offset) = split_offset(s) |> Option.or_fail(ParseError(input: s))
+  parsed = Some(OffsetDateTime(local: DateTime.parse(local), offset: Offset.parse(offset))) escape {
+    ParseError(_) -> None
+  }
+  parsed |> Option.or_fail(ParseError(input: s))
+}
+
+impl OffsetDateTime: Ord {
+  fn compare(self, other) {
+    Ord.compare(to_instant(self), to_instant(other)) match {
+      Equal -> Ord.compare(self.local, other.local)
+      order -> order
+    }
+  }
+}
+
+## Shown as `to_string` writes it (`2026-10-29T09:00:00.000+09:00`).
+impl OffsetDateTime: Show {
+  fn show(self) { to_string(self) }
+}
+
+# `s` before and from its last `Z`, `z`, `+` or `-`. Without an offset that is a `-` of the date,
+# and the offset fails to parse.
+fn split_offset(s: String) -> Option[(String, String)] {
+  cps = String.code_points(s)
+  List.reverse(cps)
+    |> List.find_index(fn(c) { c == 43 || c == 45 || c == 90 || c == 122 })
+    |> Option.map(fn(i) {
+      at = List.length(cps) - 1 - i
+      (text(List.take(cps, at)), text(List.drop(cps, at)))
+    })
+}
+
+fn text(cps: List[Int]) -> String {
+  List.filter_map(cps, String.from_code_point) |> String.concat
+}

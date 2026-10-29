@@ -1,0 +1,135 @@
+import Std.Duration.{Duration}
+import Std.Instant.{Instant}
+import Date.{Date}
+import TimeOfDay.{TimeOfDay}
+import DateTime.{DateTime}
+import Offset.{Offset}
+import OffsetDateTime.{OffsetDateTime}
+
+fn jst() -> Offset {
+  Offset.from_hours(9) |> Option.or(Offset.utc())
+}
+
+fn ms(n: Int64) -> Instant {
+  Instant.from_unix_milliseconds(n)
+}
+
+fn parsed(s: String) -> Option[OffsetDateTime] {
+  Some(OffsetDateTime.parse(s)) escape {
+    ParseError(_) -> None
+  }
+}
+
+fn written(s: String) -> String {
+  parsed(s) |> Option.map(OffsetDateTime.to_string) |> Option.or("-")
+}
+
+@test
+fn from_instant_shows_the_local_time() {
+  odt = OffsetDateTime.from_instant(ms(0), jst())
+  assert OffsetDateTime.to_string(odt) == "1970-01-01T09:00:00.000+09:00"
+  assert OffsetDateTime.date(odt) == Date.from_unix_days(0)
+  assert Some(OffsetDateTime.time(odt)) == TimeOfDay.from_hms(9, 0, 0)
+  assert OffsetDateTime.to_string(OffsetDateTime.from_instant(ms(0), Offset.utc()))
+    == "1970-01-01T00:00:00.000Z"
+}
+
+@test
+fn instants_go_there_and_back() {
+  offsets = [0, 540, -330, 1439, -1439] |> List.filter_map(Offset.from_minutes)
+  instants = [ms(0), ms(-1), ms(1761696000123), Instant.from_unix_milliseconds(-62167219200 * 1000)]
+  back = List.flat_map(instants, fn(t) {
+    List.map(offsets, fn(o) { OffsetDateTime.to_instant(OffsetDateTime.from_instant(t, o)) == t })
+  })
+  assert List.all(back, fn(b) { b })
+}
+
+@test
+fn in_utc_to_string_is_what_instant_writes() {
+  instants = [ms(0), ms(-1), ms(1761696000123), Instant.from_unix_milliseconds(253402300800 * 1000)]
+  assert List.all(instants, fn(t) {
+    OffsetDateTime.to_string(OffsetDateTime.from_instant(t, Offset.utc())) == Instant.to_string(t)
+  })
+}
+
+@test
+fn unix_milliseconds_round_trip_for_uuid_v7() {
+  # What x/uuid gives for a version 7 UUID is an Instant of its 48-bit Unix milliseconds.
+  made = Instant.from_unix_milliseconds(1761696000123)
+  text = OffsetDateTime.to_string(OffsetDateTime.from_instant(made, Offset.utc()))
+  assert text == "2025-10-29T00:00:00.123Z"
+  assert (parsed(text)
+    |> Option.map(fn(odt) { Instant.to_unix_milliseconds(OffsetDateTime.to_instant(odt)) }))
+    == Some(1761696000123)
+}
+
+@test
+fn with_offset_keeps_the_point_in_time() {
+  odt = OffsetDateTime.from_instant(ms(0), jst())
+  utc = OffsetDateTime.with_offset(odt, Offset.utc())
+  assert OffsetDateTime.to_string(utc) == "1970-01-01T00:00:00.000Z"
+  assert OffsetDateTime.to_instant(utc) == OffsetDateTime.to_instant(odt)
+  assert utc != odt
+}
+
+@test
+fn ord_is_by_point_in_time_then_local_time() {
+  # a and b are the same point in time; b has the earlier local time. c is an hour later.
+  all = ["2026-10-29T09:00:00+09:00", "2026-10-29T00:00:00Z", "2026-10-29T08:59:59+08:00"]
+    |> List.filter_map(parsed)
+  (a, b, c) = all match {
+    [a, b, c] -> (a, b, c)
+    _         -> panic("parse")
+  }
+  assert (Ord.compare(b, a), Ord.compare(a, c), Ord.compare(a, a)) == (Less, Less, Equal)
+  assert List.sort([c, a, b]) == [b, a, c]
+}
+
+@test
+fn arithmetic_keeps_the_offset() {
+  start = parsed("2026-10-29T23:30:00+09:00")
+    |> Option.or(OffsetDateTime.from_instant(ms(0), jst()))
+  assert OffsetDateTime.to_string(OffsetDateTime.add(start, Duration.hours(1)))
+    == "2026-10-30T00:30:00.000+09:00"
+  assert OffsetDateTime.to_string(OffsetDateTime.subtract(start, Duration.minutes(30)))
+    == "2026-10-29T23:00:00.000+09:00"
+  assert OffsetDateTime.to_string(OffsetDateTime.add_days(start, 3))
+    == "2026-11-01T23:30:00.000+09:00"
+  assert OffsetDateTime.to_string(OffsetDateTime.add_months(start, 4))
+    == "2027-02-28T23:30:00.000+09:00"
+  later = parsed("2026-10-29T15:00:00Z") |> Option.or(start)
+  assert OffsetDateTime.since(later, start) == Duration.minutes(30)
+}
+
+@test
+fn parse_reads_rfc_3339() {
+  assert written("2026-10-29T09:00:00+09:00") == "2026-10-29T09:00:00.000+09:00"
+  assert written("2026-10-29T00:00:00Z") == "2026-10-29T00:00:00.000Z"
+  assert written("2026-10-29t00:00:00z") == "2026-10-29T00:00:00.000Z"
+  assert written("2026-10-29 00:00:00.5-05:30") == "2026-10-29T00:00:00.500-05:30"
+  assert written("2026-10-29T00:00:00.123456789+00:00") == "2026-10-29T00:00:00.123Z"
+  assert written("2026-10-29T00:00:00-00:00") == "2026-10-29T00:00:00.000Z"
+  assert written("+010000-01-01T00:00:00.000Z") == "+010000-01-01T00:00:00.000Z"
+  assert written("-000001-12-31T23:00+01:00") == "-000001-12-31T23:00:00.000+01:00"
+}
+
+@test
+fn parse_refuses_a_missing_offset_and_other_forms() {
+  assert parsed("2026-10-29T09:00:00") == None
+  assert parsed("2026-10-29") == None
+  assert parsed("2026-10-29T09:00:00+0900") == None
+  assert parsed("2026-10-29T09:00:00 +09:00") == None
+  assert parsed("2026-10-29T24:00:00Z") == None
+  assert parsed("2026-10-29T23:59:60Z") == None
+  assert parsed("2026-02-29T00:00:00Z") == None
+  assert parsed("Z") == None
+  assert parsed("") == None
+}
+
+@test
+fn the_local_time_is_kept_as_read() {
+  odt = parsed("2026-10-29T09:00:00+09:00") |> Option.or(OffsetDateTime.from_instant(ms(0), jst()))
+  date = Date.from_calendar(2026, 10, 29) |> Option.or(Date.from_unix_days(0))
+  time = TimeOfDay.from_hms(9, 0, 0) |> Option.or(TimeOfDay.midnight())
+  assert odt == OffsetDateTime(local: DateTime(date:, time:), offset: jst())
+}

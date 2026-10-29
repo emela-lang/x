@@ -1,0 +1,233 @@
+# A calendar date: a day that is the same in every time zone (a birthday, a holiday, an expiry
+# date). It is not a point in time; to make an Instant of it, give a TimeOfDay and an Offset
+# through OffsetDateTime.
+#
+# Dates are counted in the proleptic Gregorian calendar, as Std.Instant counts them, so a date
+# read from an Instant and written back is the day `Instant.to_string` shows.
+
+## A date. Inside it is the number of days since 1970-01-01, so Eq and Ord are by day.
+pub opaque type Date(days: Int64)
+  derive Eq, Ord
+
+## Monday comes first, as in ISO 8601, so the derived Ord gives `Monday < Sunday`.
+pub enum Weekday {
+  Monday
+  Tuesday
+  Wednesday
+  Thursday
+  Friday
+  Saturday
+  Sunday
+}
+  derive Eq, Ord, Show
+
+## The date of `year`, `month` (1 to 12) and `day` (1 to the length of that month), or `None` if
+## there is no such day (`from_calendar(2026, 2, 30)`). The year 0 is 1 BC, and -1 is 2 BC.
+pub fn from_calendar(year: Int, month: Int, day: Int) -> Option[Date] {
+  if month < 1 || month > 12 || day < 1 || day > month_length(year, month) {
+    None
+  } else {
+    Some(Date(days: days_from_civil(Int64.from_int(year), month, day)))
+  }
+}
+
+## The date `n` days after 1970-01-01; before it if `n` is negative. The year must fit in an Int,
+## which every date of an Instant does.
+pub fn from_unix_days(n: Int64) -> Date {
+  Date(days: n)
+}
+
+## The number of days since 1970-01-01; negative before it.
+pub fn to_unix_days(d: Date) -> Int64 {
+  d.days
+}
+
+pub fn year(d: Date) -> Int {
+  civil(d.days).year
+}
+
+## 1 to 12.
+pub fn month(d: Date) -> Int {
+  civil(d.days).month
+}
+
+## 1 to 31.
+pub fn day(d: Date) -> Int {
+  civil(d.days).day
+}
+
+pub fn weekday(d: Date) -> Weekday {
+  # 1970-01-01 is a Thursday.
+  floor_mod(d.days + 3, 7) |> Int64.to_int match {
+    0 -> Monday
+    1 -> Tuesday
+    2 -> Wednesday
+    3 -> Thursday
+    4 -> Friday
+    5 -> Saturday
+    _ -> Sunday
+  }
+}
+
+## Whether `year` has a 29 February.
+pub fn is_leap_year(year: Int) -> Bool {
+  (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+}
+
+## The number of days in the month of `d`: 28 to 31.
+pub fn days_in_month(d: Date) -> Int {
+  c = civil(d.days)
+  month_length(c.year, c.month)
+}
+
+## Earlier if `n` is negative.
+pub fn add_days(d: Date, n: Int) -> Date {
+  Date(days: d.days + Int64.from_int(n))
+}
+
+## The same day `n` months later; earlier if `n` is negative. When that month is shorter, the
+## last day of it: `2026-01-31` plus one month is `2026-02-28`.
+pub fn add_months(d: Date, n: Int) -> Date {
+  c = civil(d.days)
+  total = c.year * 12 + (c.month - 1) + n
+  year = floor_div_int(total, 12)
+  month = total - year * 12 + 1
+  Date(
+    days: days_from_civil(Int64.from_int(year), month, Int.min(c.day, month_length(year, month))),
+  )
+}
+
+## `add_months(d, 12 * n)`: 29 February becomes 28 February in a year that is not a leap year.
+pub fn add_years(d: Date, n: Int) -> Date {
+  add_months(d, 12 * n)
+}
+
+## The number of days from `earlier` to `d`; negative if `earlier` is later.
+## Reads as `today |> Date.days_since(start)`.
+pub fn days_since(d: Date, earlier: Date) -> Int {
+  Int64.to_int(d.days - earlier.days)
+}
+
+## ISO 8601 (`2026-10-29`). Years outside 0 to 9999 are written with a sign and six digits
+## (`+010000-01-01`, `-000001-12-31`), as `Instant.to_string` writes them.
+pub fn to_string(d: Date) -> String {
+  c = civil(d.days)
+  "#{year_to_string(c.year)}-#{pad(c.month, 2)}-#{pad(c.day, 2)}"
+}
+
+## Reads what `to_string` writes: `YYYY-MM-DD`, or a sign and six or more digits for the year.
+## Fails with `ParseError` if anything else is in `s`, or if there is no such day (`2026-02-30`).
+pub fn parse(s: String) -> Date fails ParseError {
+  parts = String.split(s, "-")
+  found = parts match {
+    [y, m, day] -> (
+      if String.starts_with(y, "+") { expanded_year(y, "+") } else { digits(y, 4) },
+      m,
+      day,
+    )
+    ["", y, m, day] -> (expanded_year(y, "") |> Option.map(fn(n) { 0 - n }), m, day)
+    _ -> (None, "", "")
+  }
+  date = found match {
+    (Some(y), m, day) -> (digits(m, 2), digits(day, 2)) match {
+      (Some(m), Some(day)) -> from_calendar(y, m, day)
+      _                    -> None
+    }
+    _ -> None
+  }
+  date |> Option.or_fail(ParseError(input: s))
+}
+
+## Shown as `to_string` writes it (`2026-10-29`).
+impl Date: Show {
+  fn show(self) { to_string(self) }
+}
+
+# Six or more digits after `sign` (which `s` starts with; empty for none). Up to nine, so that the
+# year fits in an Int.
+fn expanded_year(s: String, sign: String) -> Option[Int] {
+  rest = if sign == "" { s } else { String.split(s, sign) |> List.get(1) |> Option.or("") }
+  n = String.byte_size(rest)
+  if n < 6 || n > 9 { None } else { digits(rest, n) }
+}
+
+fn month_length(year: Int, month: Int) -> Int {
+  month match {
+    2  -> if is_leap_year(year) { 29 } else { 28 }
+    4  -> 30
+    6  -> 30
+    9  -> 30
+    11 -> 30
+    _  -> 31
+  }
+}
+
+# Days to a civil date and back (proleptic Gregorian; H. Hinnant's civil_from_days and
+# days_from_civil), the same algorithm as Std.Instant.
+type Civil(year: Int, month: Int, day: Int)
+
+fn civil(days: Int64) -> Civil {
+  z = days + 719468
+  era = floor_div(z, 146097)
+  doe = z - era * 146097
+  yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+  doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+  mp = (5 * doy + 2) / 153
+  day = Int64.to_int(doy - (153 * mp + 2) / 5) + 1
+  month = if Int64.to_int(mp) < 10 { Int64.to_int(mp) + 3 } else { Int64.to_int(mp) - 9 }
+  year = Int64.to_int(yoe + era * 400) + if month <= 2 { 1 } else { 0 }
+  Civil(year:, month:, day:)
+}
+
+fn days_from_civil(year: Int64, month: Int, day: Int) -> Int64 {
+  y = if month <= 2 { year - 1 } else { year }
+  era = floor_div(y, 400)
+  yoe = y - era * 400
+  mp = Int64.from_int(if month > 2 { month - 3 } else { month + 9 })
+  doy = (153 * mp + 2) / 5 + Int64.from_int(day - 1)
+  doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+  era * 146097 + doe - 719468
+}
+
+## `b` must be positive.
+fn floor_div(a: Int64, b: Int64) -> Int64 {
+  if a >= 0 { a / b } else { (a - b + 1) / b }
+}
+
+fn floor_mod(a: Int64, b: Int64) -> Int64 {
+  a - floor_div(a, b) * b
+}
+
+fn floor_div_int(a: Int, b: Int) -> Int {
+  if a >= 0 { a / b } else { (a - b + 1) / b }
+}
+
+fn year_to_string(year: Int) -> String {
+  if year < 0 {
+    "-#{pad(0 - year, 6)}"
+  } else if year > 9999 {
+    "+#{pad(year, 6)}"
+  } else {
+    pad(year, 4)
+  }
+}
+
+## The value of `s` if it is exactly `width` ASCII digits.
+fn digits(s: String, width: Int) -> Option[Int] {
+  cps = String.code_points(s)
+  if List.length(cps) != width || !List.all(cps, fn(c) { c >= 48 && c <= 57 }) {
+    None
+  } else {
+    Some(List.fold(cps, from: 0, f: fn(n, c) { n * 10 + c - 48 }))
+  }
+}
+
+## Zero-pads `n` to `width` digits. `n` must be non-negative.
+fn pad(n: Int, width: Int) -> String {
+  pad_onto(Int.to_string(n), width)
+}
+
+# Digits are ASCII, so bytes count them without the grapheme tables (which target c lacks).
+fn pad_onto(s: String, width: Int) -> String {
+  if String.byte_size(s) >= width { s } else { pad_onto("0#{s}", width) }
+}
