@@ -6,18 +6,13 @@ type User(name: String, tags: List[String])
 
 impl User: Encode {
   fn to_dynamic(self) {
-    Dynamic.object(
-      [("name", Text(self.name)), ("tags", Items(List.map(self.tags, fn(t) { Text(t) })))],
-    )
+    Dynamic.object([("name", Text(self.name)), ("tags", Items(self.tags.map(fn(t) { Text(t) })))])
   }
 }
 
 impl User: Decode {
   fn from_dynamic(d) {
-    User(
-      name: Dynamic.field(d, "name", Dynamic.string),
-      tags: Dynamic.field(d, "tags", Dynamic.list(Dynamic.string)),
-    )
+    User(name: d.field("name", Dynamic.string), tags: d.field("tags", Dynamic.list(Dynamic.string)))
   }
 }
 

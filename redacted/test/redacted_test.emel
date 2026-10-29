@@ -13,7 +13,7 @@ fn it_reads_as_what_it_holds() {
   secret: Redacted[String] = Decode.from_dynamic(Text("hunter2")) escape {
     DecodeError(..) -> panic("failed")
   }
-  assert Lib.reveal(secret) == "hunter2"
+  assert secret.reveal() == "hunter2"
 }
 
 @test
@@ -37,7 +37,7 @@ fn every_failure_of_from_dynamic_all_is_hidden() {
   } escape {
     DecodeErrors(errors:) -> errors
   }
-  assert List.map(found, fn(e) { e.actual }) == [Text("<redacted>"), Text("<redacted>")]
+  assert found.map(fn(e) { e.actual }) == [Text("<redacted>"), Text("<redacted>")]
 }
 
 @test

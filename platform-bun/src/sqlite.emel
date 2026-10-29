@@ -18,7 +18,6 @@
 
 import Dynamic.{Dynamic, DecodeError, Text, Items}
 import Json.{SyntaxError}
-import Sql
 import Sql.{Sql, Transaction, SqlError, Statement}
 
 ## A connection to a database file.
@@ -72,8 +71,8 @@ pub handler BunSqlite(db: Connection): Sql {
     resume(count(result(sqlite_execute(self.db, Json.to_string(encode(statement))))))
   }
   suspend fn batch(statements, resume) {
-    json = Json.to_string(Items(List.map(statements, encode)))
-    resume(List.map(rows(result(sqlite_batch(self.db, json))), count))
+    json = Json.to_string(Items(statements.map(encode)))
+    resume(rows(result(sqlite_batch(self.db, json))).map(count))
   }
 }
 
@@ -102,7 +101,7 @@ fn run(text: String) -> () fails SqlError use { Sql } {
 
 ## A statement as the host reads it, with the parameters as `Sql.scalar_params` gives them.
 fn encode(statement: Statement) -> Dynamic {
-  Dynamic.object([("text", Text(statement.text)), ("params", Items(Sql.scalar_params(statement)))])
+  Dynamic.object([("text", Text(statement.text)), ("params", Items(statement.scalar_params()))])
 }
 
 fn result(o: HostOutcome) -> Dynamic fails SqlError {
@@ -125,7 +124,7 @@ fn rows(d: Dynamic) -> List[Dynamic] {
 }
 
 fn count(d: Dynamic) -> Int {
-  Dynamic.int(d) escape {
+  d.int() escape {
     DecodeError(..) -> panic("bun:sqlite gave a count that is not an Int")
   }
 }

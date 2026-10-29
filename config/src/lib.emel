@@ -40,7 +40,7 @@ pub error ConfigError(problems: List[Problem])
 
 impl ConfigError: Show {
   fn show(self) {
-    List.map(self.problems, fn(p) { "#{p.variable}: #{p.message}" }) |> String.join("; ")
+    self.problems.map(fn(p) { "#{p.variable}: #{p.message}" }).join("; ")
   }
 }
 
@@ -55,27 +55,25 @@ pub fn load[A: Decode + Shaped](prefix: String) -> A fails ConfigError use { Env
   shape = Shaped.shape(proxy)
   fields = record_fields(shape)
   env = use Env
-  values = List.filter_map(fields, fn(field) {
+  values = fields.filter_map(fn(field) {
     env.get(variable(prefix, field.name)) match {
       Some(text) if text != "" -> Some((field.name, from_text(field.shape, text)))
-      _                        -> unset(field.shape) |> Option.map(fn(d) { (field.name, d) })
+      _                        -> unset(field.shape).map(fn(d) { (field.name, d) })
     }
   })
   Decode.from_dynamic_all(Dynamic.object(values)) escape {
-    DecodeErrors(errors:) -> fail ConfigError(
-      problems: List.map(errors, fn(e) { problem(prefix, e) }),
-    )
+    DecodeErrors(errors:) -> fail ConfigError(problems: errors.map(fn(e) { problem(prefix, e) }))
   }
 }
 
 ## The variable that holds the field `name`: `name` in upper case after `prefix`.
 pub fn variable(prefix: String, name: String) -> String {
-  "#{prefix}#{String.to_ascii_uppercase(name)}"
+  "#{prefix}#{name.to_ascii_uppercase()}"
 }
 
 ## The variables of the record `shape`, in the order of its fields.
 pub fn variables(shape: Shape, prefix: String) -> List[String] {
-  List.map(record_fields(shape), fn(field) { variable(prefix, field.name) })
+  record_fields(shape).map(fn(field) { variable(prefix, field.name) })
 }
 
 ## A `.env.example` for the record `shape`: each variable with a comment saying its type and its
@@ -89,34 +87,33 @@ pub fn variables(shape: Shape, prefix: String) -> List[String] {
 ## # APP_LOG_LEVEL=
 ## ```
 pub fn example(shape: Shape, prefix: String) -> String {
-  List.map(record_fields(shape), fn(field) {
+  record_fields(shape).map(fn(field) {
     name = variable(prefix, field.name)
-    (kind, line) = Shape.strip(field.shape) match {
-      Shape.Option(inner) -> ("#{Shape.name_of(inner)} (optional)", "# #{name}=")
-      inner               -> (Shape.name_of(inner), "#{name}=")
+    (kind, line) = field.shape.strip() match {
+      Shape.Option(inner) -> ("#{inner.name_of()} (optional)", "# #{name}=")
+      inner               -> (inner.name_of(), "#{name}=")
     }
-    about = Shape.note(field.shape, "description") match {
+    about = field.shape.note("description") match {
       Some(Text(text)) -> "#{kind}: #{text}"
       _                -> kind
     }
     "# #{about}\n#{line}\n"
-  })
-    |> String.concat()
+  }).join("")
 }
 
 # The value of a field whose variable is unset: an empty List, or nothing, which Decode reads as
 # Null.
 fn unset(shape: Shape) -> Option[Dynamic] {
-  Shape.strip(shape) match {
+  shape.strip() match {
     Shape.List(_) -> Some(Items([]))
     _             -> None
   }
 }
 
 fn record_fields(shape: Shape) -> List[Field] {
-  Shape.strip(shape) match {
+  shape.strip() match {
     Record(name: _, fields:) -> fields
-    _ -> panic("x/config reads a record, but `#{Shape.name_of(shape)}` is not one")
+    _ -> panic("x/config reads a record, but `#{shape.name_of()}` is not one")
   }
 }
 
@@ -125,30 +122,28 @@ fn record_fields(shape: Shape) -> List[Field] {
 ## Items for a List, from the comma-separated parts. Text that does not turn is left as text, so
 ## that `Decode` reports it at the field.
 pub fn from_text(shape: Shape, text: String) -> Dynamic {
-  Shape.strip(shape) match {
+  shape.strip() match {
     Shape.Option(inner) -> from_text(inner, text)
-    Shape.List(item) -> Items(
-      String.split(text, ",") |> List.map(fn(part) { from_text(item, String.trim(part)) }),
-    )
-    Shape.Int   -> number(text)
-    Shape.Int64 -> number(text)
-    Shape.Float -> number(text)
+    Shape.List(item)    -> Items(text.split(",").map(fn(part) { from_text(item, part.trim()) }))
+    Shape.Int           -> number(text)
+    Shape.Int64         -> number(text)
+    Shape.Float         -> number(text)
     Shape.Bool -> {
-      word = String.to_ascii_lowercase(String.trim(text))
-      if List.any(["true", "1", "yes", "on"], fn(w) { w == word }) {
+      word = text.trim().to_ascii_lowercase()
+      if ["true", "1", "yes", "on"].any(fn(w) { w == word }) {
         Bool(True)
-      } else if List.any(["false", "0", "no", "off"], fn(w) { w == word }) {
+      } else if ["false", "0", "no", "off"].any(fn(w) { w == word }) {
         Bool(False)
       } else {
         Text(text)
       }
     }
-    _           -> Text(text)
+    _                   -> Text(text)
   }
 }
 
 fn number(text: String) -> Dynamic {
-  Number(Number.parse(String.trim(text))) escape {
+  Number(Number.parse(text.trim())) escape {
     ParseError(..) -> Text(text)
   }
 }
@@ -159,17 +154,16 @@ fn problem(prefix: String, e: DecodeError) -> Problem {
     [Key(name), ..rest] -> (name, rest)
     _                   -> ("", e.path)
   }
-  at = List.map(rest, fn(segment) {
+  at = rest.map(fn(segment) {
     segment match {
       Key(k)   -> ".#{k}"
       Index(i) -> "[#{i}]"
     }
-  })
-    |> String.concat()
+  }).join("")
   message = (e.actual, rest) match {
     (Null, [])    -> "is not set"
-    _ if at == "" -> "expected #{e.expected}, found #{Dynamic.kind(e.actual)}"
-    _             -> "#{at}: expected #{e.expected}, found #{Dynamic.kind(e.actual)}"
+    _ if at == "" -> "expected #{e.expected}, found #{e.actual.kind()}"
+    _             -> "#{at}: expected #{e.expected}, found #{e.actual.kind()}"
   }
   Problem(variable: variable(prefix, field), message:)
 }
@@ -181,6 +175,6 @@ pub handler TestEnv(vars: Map[String, String]): Env {
     TestEnv(vars: Map.from_list(vars))
   }
   fn get(name) {
-    Map.get(self.vars, name)
+    self.vars.get(name)
   }
 }

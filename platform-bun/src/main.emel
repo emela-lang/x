@@ -21,10 +21,10 @@ pub fn app(request: Request) -> Response {
 
 fn route(request: Request) -> Response fails SqlError | DecodeErrors use { Sql } {
   Sql.execute("create table if not exists notes (id integer primary key, body text not null)", [])
-  (request.method, Request.segments(request)) match {
+  (request.method, request.segments()) match {
     (Get, ["notes"]) -> {
       found: List[Note] = Sql.all("select body from notes order by id", [])
-      Response.new(200, List.map(found, fn(n) { "#{n.body}\n" }) |> String.join(""))
+      Response.new(200, found.map(fn(n) { "#{n.body}\n" }).join(""))
     }
     (Post, ["notes"]) -> {
       Sql.execute("insert into notes (body) values (?)", [Text(request.body)])
@@ -39,7 +39,7 @@ type Note(body: String)
 # What `derive Decode` is meant to generate.
 impl Note: Decode {
   fn from_dynamic(d) {
-    Note(body: Dynamic.field(d, "body", Decode.from_dynamic))
+    Note(body: d.field("body", Decode.from_dynamic))
   }
 }
 

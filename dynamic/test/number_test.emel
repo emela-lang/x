@@ -2,7 +2,7 @@ import Number.{Number, OutOfRange}
 
 fn int64_fails(n: Number) -> Bool {
   {
-    Number.to_int64(n)
+    n.to_int64()
     False
   } escape {
     OutOfRange(..) -> True
@@ -11,7 +11,7 @@ fn int64_fails(n: Number) -> Bool {
 
 fn int_fails(n: Number) -> Bool {
   {
-    Number.to_int(n)
+    n.to_int()
     False
   } escape {
     OutOfRange(..) -> True
@@ -35,25 +35,25 @@ fn normalizes() {
 
 @test
 fn writes() {
-  assert Number.to_string(Number.from_int(1500)) == "1500"
-  assert Number.to_string(Number.from_int(-1500)) == "-1500"
-  assert Number.to_string(Number.from_int(0)) == "0"
-  assert Number.to_string(float(0.25)) == "0.25"
-  assert Number.to_string(float(-1.5)) == "-1.5"
-  assert Number.to_string(float(123.456)) == "123.456"
-  assert Number.to_string(float(0.000001)) == "0.000001"
-  assert Number.to_string(float(0.0000001)) == "1e-7"
-  assert Number.to_string(float(1.5e300)) == "1.5e300"
-  assert Number.to_string(float(1.0e20)) == "100000000000000000000"
-  assert Number.to_string(float(1.0e21)) == "1e21"
+  assert Number.from_int(1500).to_string() == "1500"
+  assert Number.from_int(-1500).to_string() == "-1500"
+  assert Number.from_int(0).to_string() == "0"
+  assert float(0.25).to_string() == "0.25"
+  assert float(-1.5).to_string() == "-1.5"
+  assert float(123.456).to_string() == "123.456"
+  assert float(0.000001).to_string() == "0.000001"
+  assert float(0.0000001).to_string() == "1e-7"
+  assert float(1.5e300).to_string() == "1.5e300"
+  assert float(1.0e20).to_string() == "100000000000000000000"
+  assert float(1.0e21).to_string() == "1e21"
 }
 
 @test
 fn round_trips_floats() {
-  assert Number.to_float(float(0.1)) == 0.1
-  assert Number.to_float(float(-1.5e300)) == -1.5e300
-  assert Number.to_float(float(5.0e-324)) == 5.0e-324
-  assert Number.to_float(Number.from_int(-3)) == -3.0
+  assert float(0.1).to_float() == 0.1
+  assert float(-1.5e300).to_float() == -1.5e300
+  assert float(5.0e-324).to_float() == 5.0e-324
+  assert Number.from_int(-3).to_float() == -3.0
 }
 
 @test
@@ -65,8 +65,8 @@ fn rejects_nan_and_infinity() {
 
 @test
 fn reads_ints() {
-  assert Number.to_int(float(1.0e3)) == 1000
-  assert Number.to_int(Number.from_int(-2147483647 - 1)) == -2147483647 - 1
+  assert float(1.0e3).to_int() == 1000
+  assert Number.from_int(-2147483647 - 1).to_int() == -2147483647 - 1
   assert int_fails(float(1.5))
   assert int_fails(float(2147483648.0))
 }
@@ -75,10 +75,10 @@ fn reads_ints() {
 fn reads_int64s() {
   max = Number.from_int64(9223372036854775807)
   min = Number.from_int64(-9223372036854775807 - 1)
-  assert Number.to_string(max) == "9223372036854775807"
-  assert Number.to_int64(max) == 9223372036854775807
-  assert Number.to_int64(min) == -9223372036854775807 - 1
-  assert Number.to_int64(Number.from_int(-42)) == Int64.from_int(-42)
+  assert max.to_string() == "9223372036854775807"
+  assert max.to_int64() == 9223372036854775807
+  assert min.to_int64() == -9223372036854775807 - 1
+  assert Number.from_int(-42).to_int64() == Int64.from_int(-42)
   assert int64_fails(float(9223372036854775808.0))
   assert int64_fails(float(0.5))
 }

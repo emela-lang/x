@@ -20,7 +20,7 @@ fn get_returns_what_put_set() {
     }
   })
   assert value == Some("2")
-  assert Map.to_list(store) == [("a", "2")]
+  assert store.to_list() == [("a", "2")]
 }
 
 @test
@@ -40,7 +40,7 @@ fn delete_unsets_the_key() {
     }
   })
   assert value == None
-  assert Map.keys(store) == ["b"]
+  assert store.keys() == ["b"]
 }
 
 @test

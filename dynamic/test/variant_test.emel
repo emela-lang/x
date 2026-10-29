@@ -15,5 +15,5 @@ fn writes_only_the_tag_without_a_value() {
 
 @test
 fn round_trips_with_tag() {
-  assert Lib.tag(Lib.variant("Ok", Some(Items([Text("a")])))) == "Ok"
+  assert Lib.variant("Ok", Some(Items([Text("a")]))).tag() == "Ok"
 }

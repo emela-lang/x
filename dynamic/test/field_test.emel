@@ -3,7 +3,7 @@ import Lib.{Dynamic, Fields, Items, Text, Null, Key, Index, Segment, DecodeError
 
 fn failed_at(value: Dynamic) -> List[Segment] {
   {
-    Lib.field(value, "tags", Lib.list(Lib.string))
+    value.field("tags", Lib.list(Lib.string))
     []
   } escape {
     DecodeError(path:, ..) -> path
@@ -13,7 +13,7 @@ fn failed_at(value: Dynamic) -> List[Segment] {
 @test
 fn reads_a_field() {
   value = Fields(Map.from_list([("name", Text("a"))]))
-  assert Lib.field(value, "name", Lib.string) == "a"
+  assert value.field("name", Lib.string) == "a"
 }
 
 @test

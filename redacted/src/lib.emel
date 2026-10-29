@@ -6,7 +6,7 @@
 import Std.Map.{Map}
 import Dynamic.{Dynamic, Decode, DecodeError, DecodeErrors, Null, Bool, Number, Text, Items, Fields}
 import Dynamic.Number
-import Shape.{Shape, Shaped}
+import Shape.{Shaped}
 
 pub opaque type Redacted[A](value: A)
 
@@ -32,7 +32,7 @@ impl Redacted[A: Decode]: Decode {
   fn from_dynamic_all(d) {
     make(Decode.from_dynamic_all(d)) escape {
       DecodeErrors(errors:) -> fail DecodeErrors(
-        errors: List.map(errors, fn(e) {
+        errors: errors.map(fn(e) {
           DecodeError(expected: e.expected, actual: hide(e.actual), path: e.path)
         }),
       )
@@ -45,7 +45,7 @@ impl Redacted[A: Decode]: Decode {
 impl Redacted[A: Shaped]: Shaped {
   fn shape_in(proxy, visiting) {
     inner: Option[A] = None
-    Shaped.shape_in(inner, visiting) |> Shape.annotate("writeOnly", Bool(True))
+    Shaped.shape_in(inner, visiting).annotate("writeOnly", Bool(True))
   }
 }
 

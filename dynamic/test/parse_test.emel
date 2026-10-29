@@ -1,7 +1,7 @@
 import Number.{Number, OutOfRange}
 
 fn parsed(s: String) -> Option[String] {
-  Some(Number.to_string(Number.parse(s))) escape {
+  Some(Number.parse(s).to_string()) escape {
     ParseError(..) -> None
   }
 }
@@ -61,9 +61,9 @@ fn rejects_an_exponent_outside_int() {
 @test
 fn keeps_every_digit() {
   big = Number.parse("123456789012345678901234567890")
-  assert Number.to_float(big) == 1.2345678901234568e29
+  assert big.to_float() == 1.2345678901234568e29
   {
-    Number.to_int64(big)
+    big.to_int64()
     assert False
   } escape {
     OutOfRange(..) -> ()
@@ -72,6 +72,6 @@ fn keeps_every_digit() {
 
 @test
 fn rounds_a_huge_number_to_infinity() {
-  assert Number.to_float(Number.parse("1e400")) == 1.0 / 0.0
-  assert Number.to_float(Number.parse("1e-400")) == 0.0
+  assert Number.parse("1e400").to_float() == 1.0 / 0.0
+  assert Number.parse("1e-400").to_float() == 0.0
 }

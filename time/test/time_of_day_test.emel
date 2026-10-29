@@ -2,7 +2,7 @@ import Std.Duration.{Duration}
 import TimeOfDay.{TimeOfDay}
 
 fn time(hour: Int, minute: Int, second: Int) -> TimeOfDay {
-  TimeOfDay.from_hms(hour, minute, second) |> Option.or(TimeOfDay.midnight())
+  TimeOfDay.from_hms(hour, minute, second).or(TimeOfDay.midnight())
 }
 
 fn parsed(s: String) -> Option[TimeOfDay] {
@@ -24,22 +24,21 @@ fn from_hms_checks_the_range() {
 
 @test
 fn the_parts_come_back() {
-  t = TimeOfDay.from_milliseconds_of_day(45296789) |> Option.or(TimeOfDay.midnight())
-  assert (TimeOfDay.hour(t), TimeOfDay.minute(t), TimeOfDay.second(t), TimeOfDay.millisecond(t))
-    == (12, 34, 56, 789)
+  t = TimeOfDay.from_milliseconds_of_day(45296789).or(TimeOfDay.midnight())
+  assert (t.hour(), t.minute(), t.second(), t.millisecond()) == (12, 34, 56, 789)
 }
 
 @test
 fn add_goes_round_the_clock() {
-  assert TimeOfDay.add(time(23, 0, 0), Duration.hours(2)) == time(1, 0, 0)
-  assert TimeOfDay.add(time(1, 0, 0), Duration.hours(-2)) == time(23, 0, 0)
-  assert TimeOfDay.add(time(9, 0, 0), Duration.hours(48)) == time(9, 0, 0)
+  assert time(23, 0, 0).add(Duration.hours(2)) == time(1, 0, 0)
+  assert time(1, 0, 0).add(Duration.hours(-2)) == time(23, 0, 0)
+  assert time(9, 0, 0).add(Duration.hours(48)) == time(9, 0, 0)
 }
 
 @test
 fn to_string_always_writes_the_milliseconds() {
-  assert TimeOfDay.to_string(time(9, 5, 0)) == "09:05:00.000"
-  assert TimeOfDay.to_string(TimeOfDay.midnight()) == "00:00:00.000"
+  assert time(9, 5, 0).to_string() == "09:05:00.000"
+  assert TimeOfDay.midnight().to_string() == "00:00:00.000"
   assert inspect(time(23, 59, 59)) == "23:59:59.000"
 }
 
@@ -50,7 +49,7 @@ fn parse_reads_minutes_seconds_and_fractions() {
   assert parsed("12:34:56.789") == TimeOfDay.from_milliseconds_of_day(45296789)
   assert parsed("12:34:56,7") == TimeOfDay.from_milliseconds_of_day(45296700)
   assert parsed("12:34:56.789999") == TimeOfDay.from_milliseconds_of_day(45296789)
-  assert parsed(TimeOfDay.to_string(time(23, 59, 59))) == Some(time(23, 59, 59))
+  assert parsed(time(23, 59, 59).to_string()) == Some(time(23, 59, 59))
 }
 
 @test

@@ -3,7 +3,7 @@ import Number
 
 fn expected(value: Dynamic) -> String {
   {
-    Lib.int(value)
+    value.int()
     ""
   } escape {
     DecodeError(expected:, ..) -> expected
@@ -12,9 +12,9 @@ fn expected(value: Dynamic) -> String {
 
 @test
 fn reads_an_int() {
-  assert Lib.int(Number(Number.from_int(-1200))) == -1200
-  assert Lib.int(Number(Number.from_int(0))) == 0
-  assert Lib.int(Number(Number.from_int(2147483647))) == 2147483647
+  assert Number(Number.from_int(-1200)).int() == -1200
+  assert Number(Number.from_int(0)).int() == 0
+  assert Number(Number.from_int(2147483647)).int() == 2147483647
 }
 
 @test

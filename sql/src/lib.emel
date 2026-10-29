@@ -37,7 +37,6 @@
 
 import Dynamic.{Dynamic, Decode, DecodeErrors, Text, Items, Fields}
 import Json
-import Std.Cause
 import Std.Fiber.{Success, Failure}
 import Std.State.{State}
 
@@ -69,14 +68,14 @@ pub effect Transaction {
 pub fn all[A: Decode](text: String, params: List[Dynamic]) -> List[A]
   fails SqlError | DecodeErrors
   use { Sql } {
-  (use Sql).query(Statement(text:, params:)) |> List.map(Decode.from_dynamic_all)
+  (use Sql).query(Statement(text:, params:)).map(Decode.from_dynamic_all)
 }
 
 ## The first row of `text` read as A, or `None` if it gives no rows.
 pub fn first[A: Decode](text: String, params: List[Dynamic]) -> Option[A]
   fails SqlError | DecodeErrors
   use { Sql } {
-  List.head((use Sql).query(Statement(text:, params:))) |> Option.map(Decode.from_dynamic_all)
+  (use Sql).query(Statement(text:, params:)).head().map(Decode.from_dynamic_all)
 }
 
 ## Runs `text`, and gives the number of rows it changed.
@@ -87,7 +86,7 @@ pub fn execute(text: String, params: List[Dynamic]) -> Int fails SqlError use { 
 ## The parameters of `statement` as a handler gives them to the database: Items and Fields as
 ## JSON text, and the others as they are.
 pub fn scalar_params(statement: Statement) -> List[Dynamic] {
-  List.map(statement.params, fn(p) {
+  statement.params.map(fn(p) {
     p match {
       Items(_)  -> Text(Json.to_string(p))
       Fields(_) -> Text(Json.to_string(p))
@@ -112,7 +111,7 @@ pub fn transaction[A, E, R](body: fn() -> A fails E use { Sql, R }) -> A
     }
     Failure(cause) -> {
       tx.rollback()
-      Cause.raise(cause)
+      cause.raise()
     }
   }
 }
@@ -147,10 +146,10 @@ pub handler TestSql: Sql {
     resume(run(statement))
   }
   suspend fn execute(statement, resume) {
-    resume(List.length(run(statement)))
+    resume(run(statement).length())
   }
   suspend fn batch(statements, resume) {
-    resume(List.map(statements, fn(s) { List.length(run(s)) }))
+    resume(statements.map(fn(s) { run(s).length() }))
   }
 }
 
@@ -177,14 +176,12 @@ pub handler TestTransaction: Transaction {
 
 fn run(statement: Statement) -> List[Dynamic] fails SqlError use { State[TestDatabase] } {
   db = (use State[TestDatabase]).get()
-  n = List.length(
-    List.filter(db.sent, fn(s) {
-      s match {
-        Ran(_) -> True
-        _      -> False
-      }
-    }),
-  )
+  n = db.sent.filter(fn(s) {
+    s match {
+      Ran(_) -> True
+      _      -> False
+    }
+  }).length()
   record(Ran(statement))
   respond = db.respond
   respond(statement, n) match {
@@ -195,12 +192,12 @@ fn run(statement: Statement) -> List[Dynamic] fails SqlError use { State[TestDat
 
 fn record(sent: Sent) -> () use { State[TestDatabase] } {
   (use State[TestDatabase]).update(fn(db) {
-    TestDatabase(sent: List.append(db.sent, [sent]), ..db)
+    TestDatabase(sent: db.sent.append([sent]), ..db)
   })
 }
 
 fn is_open() -> Bool use { State[TestDatabase] } {
-  List.fold((use State[TestDatabase]).get().sent, from: False, f: fn(open, s) {
+  (use State[TestDatabase]).get().sent.fold(from: False, f: fn(open, s) {
     s match {
       Began      -> True
       Committed  -> False

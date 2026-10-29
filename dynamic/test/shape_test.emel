@@ -8,9 +8,9 @@ enum Shape {
   derive Eq
 
 fn shape(value: Dynamic) -> Shape fails DecodeError {
-  Lib.tag(value) match {
-    "Square" -> Lib.field(value, "value", fn(payload) {
-      Square(side: Lib.field(payload, "side", Lib.string))
+  value.tag() match {
+    "Square" -> value.field("value", fn(payload) {
+      Square(side: payload.field("side", Lib.string))
     })
     "Empty" -> Empty
     _       -> fail DecodeError(expected: "Square or Empty", actual: value, path: [Key("tag")])

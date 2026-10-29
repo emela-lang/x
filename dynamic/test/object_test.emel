@@ -14,5 +14,5 @@ fn keeps_the_later_value_of_a_repeated_key() {
 
 @test
 fn reads_back_with_field() {
-  assert Lib.field(Lib.object([("name", Text("a"))]), "name", Lib.string) == "a"
+  assert Lib.object([("name", Text("a"))]).field("name", Lib.string) == "a"
 }

@@ -42,7 +42,7 @@ pub handler DotEnv(vars: Map[String, String]): Env {
   fn get(name) {
     (use Env).get(name) match {
       Some(value) -> Some(value)
-      None        -> Map.get(self.vars, name)
+      None        -> self.vars.get(name)
     }
   }
 }
@@ -50,29 +50,27 @@ pub handler DotEnv(vars: Map[String, String]): Env {
 ## The pairs of `text`, the contents of a `.env` file, in the order they are written. `path` is
 ## only for the error.
 pub fn parse(path: String, text: String) -> List[(String, String)] fails DotEnvError {
-  String.split(text, "\n")
-    |> List.enumerate()
-    |> List.filter_map(fn((i, raw)) {
-      line(raw) escape {
-        Invalid(reason:) -> fail DotEnvError(path:, line: i + 1, reason:)
-      }
-    })
+  text.split("\n").enumerate().filter_map(fn((i, raw)) {
+    line(raw) escape {
+      Invalid(reason:) -> fail DotEnvError(path:, line: i + 1, reason:)
+    }
+  })
 }
 
 error Invalid(reason: String)
 
 fn line(raw: String) -> Option[(String, String)] fails Invalid {
-  trimmed = String.trim(raw)
-  if trimmed == "" || String.starts_with(trimmed, "#") {
+  trimmed = raw.trim()
+  if trimmed == "" || trimmed.starts_with("#") {
     None
   } else {
-    chars = String.chars(trimmed)
+    chars = trimmed.chars()
     after_export = chars match {
       ["e", "x", "p", "o", "r", "t", " ", ..rest] -> rest
       _                                           -> chars
     }
     (key, after_key) = split_at(after_export, "=")
-    name = String.trim(String.concat(key))
+    name = key.join("").trim()
     after_key match {
       None -> fail Invalid(reason: "no `=` after the key")
       Some(rest) -> if is_name(name) {
@@ -97,22 +95,22 @@ fn split_at(chars: List[String], sep: String) -> (List[String], Option[List[Stri
 }
 
 fn is_name(name: String) -> Bool {
-  String.chars(name) match {
+  name.chars() match {
     [] -> False
     [first, ..rest] -> !is_digit(first)
-      && List.all([first, ..rest], fn(c) { is_digit(c) || is_letter(c) || c == "_" })
+      && [first, ..rest].all(fn(c) { is_digit(c) || is_letter(c) || c == "_" })
   }
 }
 
 fn is_digit(c: String) -> Bool {
-  String.code_points(c) match {
+  c.code_points() match {
     [n] -> n >= 48 && n <= 57
     _   -> False
   }
 }
 
 fn is_letter(c: String) -> Bool {
-  String.code_points(c) match {
+  c.code_points() match {
     [n] -> (n >= 65 && n <= 90) || (n >= 97 && n <= 122)
     _   -> False
   }
@@ -136,7 +134,7 @@ fn value(chars: List[String]) -> String fails Invalid {
       }
     }
     ["#", ..] -> ""
-    unquoted  -> String.trim(String.concat(before_comment(unquoted)))
+    unquoted  -> before_comment(unquoted).join("").trim()
   }
 }
 

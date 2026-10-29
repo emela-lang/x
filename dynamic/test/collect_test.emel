@@ -20,20 +20,20 @@ type Body(title: String, tags: List[String], due: Option[String]) derive Eq
 impl Body: Decode {
   fn from_dynamic(d) {
     Body(
-      title: Lib.field(d, "title", Decode.from_dynamic),
-      tags: Lib.field(d, "tags", Decode.from_dynamic),
-      due: Lib.field(d, "due", Decode.from_dynamic),
+      title: d.field("title", Decode.from_dynamic),
+      tags: d.field("tags", Decode.from_dynamic),
+      due: d.field("due", Decode.from_dynamic),
     )
   }
 
   fn from_dynamic_all(d) {
-    title = Lib.attempt(fn() { Lib.field_all(d, "title", Decode.from_dynamic_all) })
-    tags = Lib.attempt(fn() { Lib.field_all(d, "tags", Decode.from_dynamic_all) })
-    due = Lib.attempt(fn() { Lib.field_all(d, "due", Decode.from_dynamic_all) })
+    title = Lib.attempt(fn() { d.field_all("title", Decode.from_dynamic_all) })
+    tags = Lib.attempt(fn() { d.field_all("tags", Decode.from_dynamic_all) })
+    due = Lib.attempt(fn() { d.field_all("due", Decode.from_dynamic_all) })
     (title, tags, due) match {
       (Decoded(title), Decoded(tags), Decoded(due)) -> Body(title:, tags:, due:)
       _ -> fail DecodeErrors(
-        errors: List.flatten([Lib.errors_of(title), Lib.errors_of(tags), Lib.errors_of(due)]),
+        errors: [title.errors_of(), tags.errors_of(), due.errors_of()].flatten(),
       )
     }
   }
@@ -44,15 +44,13 @@ type Flag(on: Bool)
 
 impl Flag: Decode {
   fn from_dynamic(d) {
-    Flag(on: Lib.field(d, "on", Decode.from_dynamic))
+    Flag(on: d.field("on", Decode.from_dynamic))
   }
 }
 
 fn failures[A: Decode](d: Dynamic, proxy: Option[A]) -> List[(String, List[Segment])] {
   read: fn() -> A fails DecodeErrors = fn() { Decode.from_dynamic_all(d) }
-  Lib.attempt(read)
-    |> Lib.errors_of
-    |> List.map(fn(e) { (e.expected, e.path) })
+  Lib.attempt(read).errors_of().map(fn(e) { (e.expected, e.path) })
 }
 
 @test
@@ -99,9 +97,9 @@ fn none_is_read_from_null() {
 
 @test
 fn items_checks_the_number_of_elements() {
-  assert Lib.items(Items([Null, Null]), 2) == [Null, Null]
+  assert Items([Null, Null]).items(2) == [Null, Null]
   found = {
-    Lib.items(Items([Null, Null, Null]), 2)
+    Items([Null, Null, Null]).items(2)
     ""
   } escape {
     DecodeError(expected:, ..) -> expected
@@ -113,7 +111,7 @@ fn items_checks_the_number_of_elements() {
 fn index_all_adds_the_position() {
   read = Lib.index_all(1, Decode.from_dynamic_all)
   r: fn() -> Int fails DecodeErrors = fn() { read(Items([Null, Text("x")])) }
-  paths = Lib.attempt(r) |> Lib.errors_of |> List.map(fn(e) { e.path })
+  paths = Lib.attempt(r).errors_of().map(fn(e) { e.path })
   assert paths == [[Index(1)]]
 }
 
@@ -125,6 +123,5 @@ fn the_failures_are_shown_together() {
       DecodeError(expected: "number", actual: Null, path: [Key("n")]),
     ],
   )
-  assert Show.show(e)
-    == "expected: text, actual: null at .title; expected: number, actual: null at .n"
+  assert e.show() == "expected: text, actual: null at .title; expected: number, actual: null at .n"
 }

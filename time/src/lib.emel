@@ -7,11 +7,10 @@
 # import Std.Clock.{Clock}
 # import Time
 # import Time.Offset
-# import Time.OffsetDateTime
 #
 # fn stamp() -> String use { Clock } {
-#   jst = Offset.from_hours(9) |> Option.or(Offset.utc())
-#   Time.now(jst) |> OffsetDateTime.to_string # 2026-10-29T09:00:00.000+09:00
+#   jst = Offset.from_hours(9).or(Offset.utc())
+#   Time.now(jst).to_string() # 2026-10-29T09:00:00.000+09:00
 # }
 # ```
 #
@@ -32,13 +31,13 @@ pub fn now(offset: Offset) -> OffsetDateTime use { Clock } {
 
 ## The current date from Clock, in `offset`. In `+09:00` the date changes at 15:00 UTC.
 pub fn today(offset: Offset) -> Date use { Clock } {
-  OffsetDateTime.date(now(offset))
+  now(offset).date()
 }
 
 ## Reads RFC 3339 as `OffsetDateTime.parse` does, as the point in time it is. It reads what
 ## `Instant.to_string` writes. Fails with `ParseError` if `OffsetDateTime.parse` does.
 pub fn parse_instant(s: String) -> Instant fails ParseError {
-  OffsetDateTime.to_instant(OffsetDateTime.parse(s))
+  OffsetDateTime.parse(s).to_instant()
 }
 
 ## `n` days of 24 hours, as `Duration.hours(n * 24)`.
@@ -50,16 +49,16 @@ pub fn days(n: Int64) -> Duration {
 ## exact: a day is not always 24 hours somewhere, and a month is not a fixed length. Zero is
 ## `PT0S`. The seconds have as many digits of fraction as they need, up to three.
 pub fn duration_to_string(d: Duration) -> String {
-  ms = Duration.to_milliseconds(d)
+  ms = d.to_milliseconds()
   sign = if ms < 0 { "-" } else { "" }
-  a = Int64.abs(ms)
+  a = ms.abs()
   h = a / 3600000
   m = a / 60000 % 60
   s = a / 1000 % 60
-  f = Int64.to_int(a % 1000)
-  hours = if h > 0 { "#{Int64.to_string(h)}H" } else { "" }
-  minutes = if m > 0 { "#{Int64.to_string(m)}M" } else { "" }
-  seconds = if s > 0 || f > 0 { "#{Int64.to_string(s)}#{fraction(f)}S" } else { "" }
+  f = (a % 1000).to_int()
+  hours = if h > 0 { "#{h.to_string()}H" } else { "" }
+  minutes = if m > 0 { "#{m.to_string()}M" } else { "" }
+  seconds = if s > 0 || f > 0 { "#{s.to_string()}#{fraction(f)}S" } else { "" }
   body = "#{hours}#{minutes}#{seconds}"
   if body == "" { "PT0S" } else { "#{sign}PT#{body}" }
 }
@@ -70,24 +69,21 @@ pub fn duration_to_string(d: Duration) -> String {
 ## `ParseError` if anything else is in `s`, including years, months and weeks (`P1Y`, `P1M`,
 ## `P1W`), whose length depends on the calendar.
 pub fn parse_duration(s: String) -> Duration fails ParseError {
-  (negative, rest) = if String.starts_with(s, "-") {
+  (negative, rest) = if s.starts_with("-") {
     (True, after(s, "-"))
-  } else if String.starts_with(s, "+") {
+  } else if s.starts_with("+") {
     (False, after(s, "+"))
   } else {
     (False, Some(s))
   }
-  ms = rest
-    |> Option.and_then(fn(r) { if String.starts_with(r, "P") { after(r, "P") } else { None } })
-    |> Option.and_then(designators)
-  ms
-    |> Option.map(fn(n) { Duration.milliseconds(if negative { 0 - n } else { n }) })
-    |> Option.or_fail(ParseError(input: s))
+  body = rest.and_then(fn(r) { if r.starts_with("P") { after(r, "P") } else { None } })
+  ms = body.and_then(designators).map(fn(n) { if negative { 0 - n } else { n } })
+  ms.map(Duration.milliseconds).or_fail(ParseError(input: s))
 }
 
 # What is after the `P`: `nD`, then `T` and at least one of `nH`, `nM`, `nS` in that order.
 fn designators(s: String) -> Option[Int64] {
-  String.split(s, "T") match {
+  s.split("T") match {
     [day] -> if day == "" { None } else { days_part(day) }
     [day, time] -> (days_part(day), time_part(time)) match {
       (Some(d), Some(t)) -> Some(d + t)
@@ -101,8 +97,8 @@ fn days_part(s: String) -> Option[Int64] {
   if s == "" {
     Some(0)
   } else {
-    String.split(s, "D") match {
-      [n, ""] -> number(n) |> Option.map(fn(n) { n * 86400000 })
+    s.split("D") match {
+      [n, ""] -> number(n).map(fn(n) { n * 86400000 })
       _       -> None
     }
   }
@@ -117,7 +113,7 @@ fn time_part(s: String) -> Option[Int64] {
     sec = if after_m == "" {
       Some(0)
     } else {
-      String.split(after_m, "S") match {
+      after_m.split("S") match {
         [n, ""] -> seconds(n)
         _       -> None
       }
@@ -132,18 +128,18 @@ fn time_part(s: String) -> Option[Int64] {
 # The milliseconds of `nX` at the start of `s` and what follows it, or 0 and all of `s` if `s` has
 # no `X`.
 fn unit(s: String, designator: String, ms: Int) -> (Option[Int64], String) {
-  String.split(s, designator) match {
+  s.split(designator) match {
     [_]       -> (Some(0), s)
-    [n, rest] -> (number(n) |> Option.map(fn(n) { n * Int64.from_int(ms) }), rest)
+    [n, rest] -> (number(n).map(fn(n) { n * Int64.from_int(ms) }), rest)
     _         -> (None, "")
   }
 }
 
 # `n`, `n.f...` or `n,f...` seconds, as milliseconds.
 fn seconds(s: String) -> Option[Int64] {
-  parts = if String.contains(s, ".") { String.split(s, ".") } else { String.split(s, ",") }
+  parts = if s.contains(".") { s.split(".") } else { s.split(",") }
   parts match {
-    [n] -> number(n) |> Option.map(fn(n) { n * 1000 })
+    [n] -> number(n).map(fn(n) { n * 1000 })
     [n, f] -> (number(n), milliseconds(f)) match {
       (Some(n), Some(f)) -> Some(n * 1000 + Int64.from_int(f))
       _                  -> None
@@ -155,23 +151,23 @@ fn seconds(s: String) -> Option[Int64] {
 # One to ten ASCII digits, so that the milliseconds of days, hours, minutes and seconds of that many
 # digits add up within an Int64.
 fn number(s: String) -> Option[Int64] {
-  cps = String.code_points(s)
-  n = List.length(cps)
-  if n == 0 || n > 10 || !List.all(cps, fn(c) { c >= 48 && c <= 57 }) {
+  cps = s.code_points()
+  n = cps.length()
+  if n == 0 || n > 10 || !cps.all(fn(c) { c >= 48 && c <= 57 }) {
     None
   } else {
-    Some(List.fold(cps, from: 0, f: fn(acc, c) { acc * 10 + Int64.from_int(c - 48) }))
+    Some(cps.fold(from: 0, f: fn(acc, c) { acc * 10 + Int64.from_int(c - 48) }))
   }
 }
 
 # One or more digits of a fraction of a second, as milliseconds. Digits after the third are dropped.
 fn milliseconds(fraction: String) -> Option[Int] {
-  cps = String.code_points(fraction)
-  if List.is_empty(cps) || !List.all(cps, fn(c) { c >= 48 && c <= 57 }) {
+  cps = fraction.code_points()
+  if cps.is_empty() || !cps.all(fn(c) { c >= 48 && c <= 57 }) {
     None
   } else {
-    first = List.append(List.take(cps, 3), [48, 48, 48]) |> List.take(3)
-    Some(List.fold(first, from: 0, f: fn(n, c) { n * 10 + c - 48 }))
+    first = cps.take(3).append([48, 48, 48]).take(3)
+    Some(first.fold(from: 0, f: fn(n, c) { n * 10 + c - 48 }))
   }
 }
 
@@ -180,7 +176,7 @@ fn fraction(ms: Int) -> String {
   if ms == 0 {
     ""
   } else if ms % 100 == 0 {
-    ".#{Int.to_string(ms / 100)}"
+    ".#{(ms / 100).to_string()}"
   } else if ms % 10 == 0 {
     ".#{pad(ms / 10, 2)}"
   } else {
@@ -189,7 +185,7 @@ fn fraction(ms: Int) -> String {
 }
 
 fn after(s: String, prefix: String) -> Option[String] {
-  String.split(s, prefix) match {
+  s.split(prefix) match {
     ["", rest] -> Some(rest)
     _          -> None
   }
@@ -197,10 +193,10 @@ fn after(s: String, prefix: String) -> Option[String] {
 
 ## Zero-pads `n` to `width` digits. `n` must be non-negative.
 fn pad(n: Int, width: Int) -> String {
-  pad_onto(Int.to_string(n), width)
+  pad_onto(n.to_string(), width)
 }
 
 # Digits are ASCII, so bytes count them without the grapheme tables (which target c lacks).
 fn pad_onto(s: String, width: Int) -> String {
-  if String.byte_size(s) >= width { s } else { pad_onto("0#{s}", width) }
+  if s.byte_size() >= width { s } else { pad_onto("0#{s}", width) }
 }

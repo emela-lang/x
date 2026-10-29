@@ -79,7 +79,7 @@ pub trait Shaped {
 ## }
 ## ```
 pub fn visit(name: String, visiting: List[String], build: fn(List[String]) -> Shape) -> Shape {
-  if List.any(visiting, fn(n) { n == name }) {
+  if visiting.any(fn(n) { n == name }) {
     Ref(name)
   } else {
     build([name, ..visiting])
@@ -150,7 +150,7 @@ pub fn annotate(shape: Shape, name: String, value: Dynamic) -> Shape {
   shape match {
     Annotated(shape: inner, notes:) -> Annotated(
       shape: inner,
-      notes: List.append(List.filter(notes, fn((n, _)) { n != name }), [(name, value)]),
+      notes: notes.filter(fn((n, _)) { n != name }).append([(name, value)]),
     )
     _ -> Annotated(shape:, notes: [(name, value)])
   }
@@ -219,7 +219,7 @@ pub fn strip(shape: Shape) -> Shape {
 ## The value of the note `name` on `shape`, looking through names, or `None`.
 pub fn note(shape: Shape, name: String) -> Option[Dynamic] {
   shape match {
-    Annotated(shape: inner, notes:) -> List.find(notes, fn((n, _)) { n == name }) match {
+    Annotated(shape: inner, notes:) -> notes.find(fn((n, _)) { n == name }) match {
       Some((_, value)) -> Some(value)
       None             -> note(inner, name)
     }
@@ -232,7 +232,7 @@ pub fn note(shape: Shape, name: String) -> Option[Dynamic] {
 ## Empty for any other shape.
 pub fn field_names(shape: Shape) -> List[String] {
   strip(shape) match {
-    Record(name: _, fields:) -> List.map(fields, fn(field) { field.name })
+    Record(name: _, fields:) -> fields.map(fn(field) { field.name })
     _                        -> []
   }
 }
@@ -261,9 +261,9 @@ pub fn name_of(shape: Shape) -> String {
 ## The name of a type with type parameters, from its name and the shapes of its type arguments:
 ## `generic_name("Page", [member])` is `"Page[Member]"`. Without arguments, `name` as it is.
 pub fn generic_name(name: String, arguments: List[Shape]) -> String {
-  if List.is_empty(arguments) {
+  if arguments.is_empty() {
     name
   } else {
-    "#{name}[#{List.map(arguments, name_of) |> String.join(", ")}]"
+    "#{name}[#{arguments.map(name_of).join(", ")}]"
   }
 }

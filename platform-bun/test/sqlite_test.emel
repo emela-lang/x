@@ -11,10 +11,7 @@ type Note(id: Int, body: String) derive Eq
 # What `derive Decode` is meant to generate.
 impl Note: Decode {
   fn from_dynamic(d) {
-    Note(
-      id: Dynamic.field(d, "id", Decode.from_dynamic),
-      body: Dynamic.field(d, "body", Decode.from_dynamic),
-    )
+    Note(id: d.field("id", Decode.from_dynamic), body: d.field("body", Decode.from_dynamic))
   }
 }
 
@@ -31,7 +28,7 @@ fn setup() -> () fails SqlError use { Sql } {
 
 fn bodies() -> List[String] fails SqlError | DecodeErrors use { Sql } {
   notes: List[Note] = Sql.all("select id, body from notes order by id", [])
-  List.map(notes, fn(n) { n.body })
+  notes.map(fn(n) { n.body })
 }
 
 @test

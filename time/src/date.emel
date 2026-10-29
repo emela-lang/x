@@ -58,7 +58,7 @@ pub fn day(d: Date) -> Int {
 
 pub fn weekday(d: Date) -> Weekday {
   # 1970-01-01 is a Thursday.
-  floor_mod(d.days + 3, 7) |> Int64.to_int match {
+  floor_mod(d.days + 3, 7).to_int() match {
     0 -> Monday
     1 -> Tuesday
     2 -> Wednesday
@@ -92,9 +92,7 @@ pub fn add_months(d: Date, n: Int) -> Date {
   total = c.year * 12 + (c.month - 1) + n
   year = floor_div_int(total, 12)
   month = total - year * 12 + 1
-  Date(
-    days: days_from_civil(Int64.from_int(year), month, Int.min(c.day, month_length(year, month))),
-  )
+  Date(days: days_from_civil(Int64.from_int(year), month, c.day.min(month_length(year, month))))
 }
 
 ## `add_months(d, 12 * n)`: 29 February becomes 28 February in a year that is not a leap year.
@@ -103,9 +101,9 @@ pub fn add_years(d: Date, n: Int) -> Date {
 }
 
 ## The number of days from `earlier` to `d`; negative if `earlier` is later.
-## Reads as `today |> Date.days_since(start)`.
+## Reads as `today.days_since(start)`.
 pub fn days_since(d: Date, earlier: Date) -> Int {
-  Int64.to_int(d.days - earlier.days)
+  (d.days - earlier.days).to_int()
 }
 
 ## ISO 8601 (`2026-10-29`). Years outside 0 to 9999 are written with a sign and six digits
@@ -118,15 +116,11 @@ pub fn to_string(d: Date) -> String {
 ## Reads what `to_string` writes: `YYYY-MM-DD`, or a sign and six or more digits for the year.
 ## Fails with `ParseError` if anything else is in `s`, or if there is no such day (`2026-02-30`).
 pub fn parse(s: String) -> Date fails ParseError {
-  parts = String.split(s, "-")
+  parts = s.split("-")
   found = parts match {
-    [y, m, day] -> (
-      if String.starts_with(y, "+") { expanded_year(y, "+") } else { digits(y, 4) },
-      m,
-      day,
-    )
-    ["", y, m, day] -> (expanded_year(y, "") |> Option.map(fn(n) { 0 - n }), m, day)
-    _ -> (None, "", "")
+    [y, m, day] -> (if y.starts_with("+") { expanded_year(y, "+") } else { digits(y, 4) }, m, day)
+    ["", y, m, day] -> (expanded_year(y, "").map(fn(n) { 0 - n }), m, day)
+    _           -> (None, "", "")
   }
   date = found match {
     (Some(y), m, day) -> (digits(m, 2), digits(day, 2)) match {
@@ -135,7 +129,7 @@ pub fn parse(s: String) -> Date fails ParseError {
     }
     _ -> None
   }
-  date |> Option.or_fail(ParseError(input: s))
+  date.or_fail(ParseError(input: s))
 }
 
 ## Shown as `to_string` writes it (`2026-10-29`).
@@ -146,8 +140,8 @@ impl Date: Show {
 # Six or more digits after `sign` (which `s` starts with; empty for none). Up to nine, so that the
 # year fits in an Int.
 fn expanded_year(s: String, sign: String) -> Option[Int] {
-  rest = if sign == "" { s } else { String.split(s, sign) |> List.get(1) |> Option.or("") }
-  n = String.byte_size(rest)
+  rest = if sign == "" { s } else { s.split(sign).get(1).or("") }
+  n = rest.byte_size()
   if n < 6 || n > 9 { None } else { digits(rest, n) }
 }
 
@@ -173,9 +167,9 @@ fn civil(days: Int64) -> Civil {
   yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
   doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
   mp = (5 * doy + 2) / 153
-  day = Int64.to_int(doy - (153 * mp + 2) / 5) + 1
-  month = if Int64.to_int(mp) < 10 { Int64.to_int(mp) + 3 } else { Int64.to_int(mp) - 9 }
-  year = Int64.to_int(yoe + era * 400) + if month <= 2 { 1 } else { 0 }
+  day = (doy - (153 * mp + 2) / 5).to_int() + 1
+  month = if mp.to_int() < 10 { mp.to_int() + 3 } else { mp.to_int() - 9 }
+  year = (yoe + era * 400).to_int() + if month <= 2 { 1 } else { 0 }
   Civil(year:, month:, day:)
 }
 
@@ -214,20 +208,20 @@ fn year_to_string(year: Int) -> String {
 
 ## The value of `s` if it is exactly `width` ASCII digits.
 fn digits(s: String, width: Int) -> Option[Int] {
-  cps = String.code_points(s)
-  if List.length(cps) != width || !List.all(cps, fn(c) { c >= 48 && c <= 57 }) {
+  cps = s.code_points()
+  if cps.length() != width || !cps.all(fn(c) { c >= 48 && c <= 57 }) {
     None
   } else {
-    Some(List.fold(cps, from: 0, f: fn(n, c) { n * 10 + c - 48 }))
+    Some(cps.fold(from: 0, f: fn(n, c) { n * 10 + c - 48 }))
   }
 }
 
 ## Zero-pads `n` to `width` digits. `n` must be non-negative.
 fn pad(n: Int, width: Int) -> String {
-  pad_onto(Int.to_string(n), width)
+  pad_onto(n.to_string(), width)
 }
 
 # Digits are ASCII, so bytes count them without the grapheme tables (which target c lacks).
 fn pad_onto(s: String, width: Int) -> String {
-  if String.byte_size(s) >= width { s } else { pad_onto("0#{s}", width) }
+  if s.byte_size() >= width { s } else { pad_onto("0#{s}", width) }
 }
