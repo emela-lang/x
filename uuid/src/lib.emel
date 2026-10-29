@@ -1,0 +1,138 @@
+# UUIDs (RFC 9562): making version 4 and version 7, and reading and writing the text form.
+#
+# ```emela
+# import Uuid.{Uuid}
+#
+# fn new_id() -> String use { Clock, Random } {
+#   Uuid.v7().to_string()
+# }
+# ```
+#
+# Making a UUID needs random bits, and version 7 also the time. They come from Random and Clock
+# in std, so this Pome has no effect of its own: give them with SystemRandom and SystemClock (or
+# Platform), and in a test with TestClock and a handler of Random that answers fixed values.
+
+import Std.Bytes.{Bytes}
+import Std.Clock.{Clock}
+import Std.Instant.{Instant}
+import Std.Random.{Random}
+
+## A UUID: its 16 bytes, in the order the text form writes them. Ordered by those bytes as
+## unsigned values, which for version 7 is the order of the times they were made at.
+pub opaque type Uuid(bytes: Bytes) derive Eq, Ord
+
+## The nil UUID, whose 128 bits are all 0 (`00000000-0000-0000-0000-000000000000`).
+pub fn nil() -> Uuid {
+  Uuid(bytes: Bytes.hex("00000000000000000000000000000000"))
+}
+
+## A version 4 UUID: 122 random bits from Random, with the version and the variant set.
+pub fn v4() -> Uuid use { Random } {
+  r = use Random
+  random = [r.int(), r.int(), r.int(), r.int()].flat_map(int_bytes)
+  Uuid(bytes: stamp(random, 4))
+}
+
+## A version 7 UUID: the Unix time in milliseconds from Clock in the first 48 bits, then 74
+## random bits from Random. A UUID made in a later millisecond sorts after one made earlier; two
+## made in the same millisecond are in random order. A time before 1970 or after the year 10889
+## does not fit in 48 bits, and only its low 48 bits are kept.
+pub fn v7() -> Uuid use { Clock, Random } {
+  ms = (use Clock).now().to_unix_milliseconds()
+  r = use Random
+  random = [r.int(), r.int(), r.int()].flat_map(int_bytes)
+  Uuid(bytes: stamp(time_bytes(ms).append(random.take(10)), 7))
+}
+
+## Reads the text form: 32 hexadecimal digits in groups of 8, 4, 4, 4 and 12, joined by `-`
+## (`0190a5c8-5f3e-7b2d-9c4a-1e2f3a4b5c6d`). Uppercase and lowercase digits are both read. Any
+## version and variant are read as they are. Fails with ParseError for anything else, including
+## spaces, braces and a `urn:uuid:` prefix.
+pub fn parse(s: String) -> Uuid fails ParseError {
+  groups = s.split("-")
+  bytes = if groups.map(String.byte_size) == [8, 4, 4, 4, 12] {
+    Bytes.from_hex(groups.join(""))
+  } else {
+    None
+  }
+  bytes match {
+    Some(b) -> Uuid(bytes: b)
+    None    -> fail ParseError(input: s)
+  }
+}
+
+## The text form, with lowercase digits (`0190a5c8-5f3e-7b2d-9c4a-1e2f3a4b5c6d`).
+pub fn to_string(u: Uuid) -> String {
+  [(0, 4), (4, 6), (6, 8), (8, 10), (10, 16)].map(fn(range) {
+    (from, to) = range
+    u.bytes.slice(from, to).to_hex()
+  }).join("-")
+}
+
+## The 16 bytes.
+pub fn to_bytes(u: Uuid) -> Bytes {
+  u.bytes
+}
+
+## The UUID of these 16 bytes, or `None` if there are not 16.
+pub fn from_bytes(b: Bytes) -> Option[Uuid] {
+  if b.size() == 16 { Some(Uuid(bytes: b)) } else { None }
+}
+
+## The version field: 4 for `v4`, 7 for `v7`, and 0 for `nil`. Only a UUID of the RFC 9562
+## variant has one; for others this reads the same 4 bits all the same.
+pub fn version(u: Uuid) -> Int {
+  byte(u, 6).shift_right(4)
+}
+
+## The time a version 7 UUID was made at, to the millisecond. `None` for any other version.
+pub fn timestamp(u: Uuid) -> Option[Instant] {
+  if u.version() == 7 {
+    ms = u.bytes.slice(0, 6).to_list().fold(from: Int64.from_int(0), f: fn(acc, b) {
+      acc.shift_left(8).bit_or(Int64.from_int(b))
+    })
+    Some(Instant.from_unix_milliseconds(ms))
+  } else {
+    None
+  }
+}
+
+## Shown as `to_string` writes it.
+impl Uuid: Show {
+  fn show(self) { to_string(self) }
+}
+
+## Sets the version in the high 4 bits of byte 6, and the RFC 9562 variant (`10`) in the high 2
+## bits of byte 8. `bytes` has 16 elements from 0 to 255.
+fn stamp(bytes: List[Int], version: Int) -> Bytes {
+  stamped = bytes.enumerate().map(fn(entry) {
+    (i, b) = entry
+    if i == 6 {
+      b.bit_and(0x0F).bit_or(version.shift_left(4))
+    } else if i == 8 {
+      b.bit_and(0x3F).bit_or(0x80)
+    } else {
+      b
+    }
+  })
+  Bytes.from_list(stamped) match {
+    Some(b) -> b
+    None    -> panic("a byte of a UUID is outside 0 to 255: #{inspect(bytes)}")
+  }
+}
+
+## The 4 bytes of `n`, most significant first.
+fn int_bytes(n: Int) -> List[Int] {
+  [24, 16, 8, 0].map(fn(by) { n.shift_right_unsigned(by).bit_and(0xFF) })
+}
+
+## The low 48 bits of `ms` as 6 bytes, most significant first.
+fn time_bytes(ms: Int64) -> List[Int] {
+  [40, 32, 24, 16, 8, 0].map(fn(by) {
+    ms.shift_right_unsigned(by).bit_and(Int64.from_int(0xFF)).to_int()
+  })
+}
+
+fn byte(u: Uuid, index: Int) -> Int {
+  u.bytes.get(index).or(0)
+}

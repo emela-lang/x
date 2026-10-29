@@ -1,0 +1,4 @@
+[pome]
+name = "github.com/emela-lang/x/uuid"
+version = "0.1.0"
+emela = "0.26.0"
