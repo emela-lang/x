@@ -16,6 +16,9 @@ pub fn parse(s: String) -> Dynamic fails SyntaxError {
   }
 }
 
+## The JSON text of `value`, without whitespace. JSON has no bytes, so Binary is written as a
+## string of standard base64 (`Base64.encode`, RFC 4648 section 4). `parse` never gives Binary:
+## that string is read back as Text, and `Base64.decode` turns it into the bytes.
 pub fn to_string(value: Dynamic) -> String {
   Write.write(value)
 }
