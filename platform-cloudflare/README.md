@@ -68,3 +68,4 @@ allow = ["github.com/emela-lang/x/platform-cloudflare"]
 
 - KV の失敗は defect になる（error にしていない）．D1 の失敗は `SqlError` になる
 - D1 との間は JSON の文字列でやり取りする．数は JavaScript の number を通るので，2^53 を超える整数は桁を失う
+- BLOB は x/dynamic の `Binary` で読み書きする．JSON に bytes がないので，`Binary` の引数と BLOB の列は `{"blob": "<hex>"}` にして運ぶ．D1 は BLOB を number の配列で返す（[D1 の型変換](https://developers.cloudflare.com/d1/worker-api/)）ので，host 側でそれを hex にする
