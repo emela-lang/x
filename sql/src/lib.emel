@@ -19,7 +19,7 @@
 #
 # A statement's parameters are written as `?` in its text, in order, and given as Dynamic values:
 #
-# - Null, Bool, Number and Text are passed as they are
+# - Null, Bool, Number, Text and Binary are passed as they are
 # - Items and Fields are passed as JSON text, for the database's JSON functions
 #
 # A handler gives the parameters to the database as `scalar_params` has them.
@@ -31,7 +31,7 @@
 #   database without them (SQLite, D1) gives 0 and 1 for a boolean and Text for JSON, and takes
 #   a Bool as 1 or 0
 # - A date, a time or a UUID is Text, for Decode to read
-# - Binary data (BLOB) cannot be read or passed yet
+# - Binary data (BLOB) is Binary, and a Binary parameter is passed as binary data
 #
 # What a handler does beyond this is in its documentation.
 
@@ -84,7 +84,7 @@ pub fn execute(text: String, params: List[Dynamic]) -> Int fails SqlError use { 
 }
 
 ## The parameters of `statement` as a handler gives them to the database: Items and Fields as
-## JSON text, and the others as they are.
+## JSON text, and the others (Binary among them) as they are.
 pub fn scalar_params(statement: Statement) -> List[Dynamic] {
   statement.params.map(fn(p) {
     p match {
