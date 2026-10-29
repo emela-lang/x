@@ -31,7 +31,7 @@ EMELA_NODE=bun emela test
 - 接続は `with` ごとに別になる．HTTP サービスでは request ごとに別の接続になるので，ある request の transaction に，別の request の文が混ざらない
 - `bun:sqlite` の呼び出しはその場で終わり，suspend しない．他の接続が transaction を開いている間の書き込みは，待たずに `SqlError`（`database is locked`）になる．読み込みは通り，commit される前の値が見える．transaction は短くし，中で他のものを待たない
 - 整数は桁を失わずに返る（`safeIntegers`）．2^53 を超える整数を引数に渡すと桁を失う
-- BLOB はまだ扱えない．BLOB を含む行は `SqlError` になる
+- BLOB は x/dynamic の `Binary`（`Std.Bytes`）で読み書きする．host との間は JSON なので，`Binary` の引数と BLOB の列は `{"blob": "<hex>"}` にして運び，host 側で `Uint8Array` に戻して bind する
 
 ## 依存して使う
 

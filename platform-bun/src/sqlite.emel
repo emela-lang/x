@@ -15,8 +15,15 @@
 # Calls to SQLite do not suspend: `bun:sqlite` runs them on the spot. A write while another
 # connection holds a transaction open fails at once with SqlError (`database is locked`); keep
 # transactions short, and do not wait for other things inside one.
+#
+# Statements go to the host and rows come back as JSON text. JSON has no bytes, and Json.to_string
+# writes Binary as base64 text, which the host would bind as TEXT; so a Binary parameter is turned
+# into `{"blob": "<hex>"}` before the statement is written as JSON, and the host binds that as a
+# Uint8Array. The host writes a BLOB in a row the same way, and `row` turns it back into Binary.
+# SQLite gives no value that is an object, so the form cannot be mistaken for another value.
 
-import Dynamic.{Dynamic, DecodeError, Text, Items}
+import Std.Bytes.{Bytes}
+import Dynamic.{Dynamic, DecodeError, Text, Items, Fields, Binary}
 import Json.{SyntaxError}
 import Sql.{Sql, Transaction, SqlError, Statement}
 
@@ -54,9 +61,9 @@ fn outcome_result(o: HostOutcome) -> String use {}
 ## `:memory:`. The connection is opened by the `with` and closed when it ends; an open transaction
 ## is rolled back then.
 ##
-## Values are as x/sql says for a database without boolean and JSON types. Integers come back
-## with every digit; an integer parameter beyond 2^53 loses digits on the way. A row with a BLOB
-## fails with SqlError.
+## Values are as x/sql says for a database without boolean and JSON types: a BLOB is Binary, and
+## a Binary parameter is bound as a BLOB. Integers come back with every digit; an integer
+## parameter beyond 2^53 loses digits on the way.
 pub handler BunSqlite(db: Connection): Sql {
   init(path: String) {
     BunSqlite(db: sqlite_open(path))
@@ -65,7 +72,8 @@ pub handler BunSqlite(db: Connection): Sql {
     sqlite_close(self.db)
   }
   suspend fn query(statement, resume) {
-    resume(rows(result(sqlite_query(self.db, Json.to_string(encode(statement))))))
+    found = rows(result(sqlite_query(self.db, Json.to_string(encode(statement)))))
+    resume(found.map(row))
   }
   suspend fn execute(statement, resume) {
     resume(count(result(sqlite_execute(self.db, Json.to_string(encode(statement))))))
@@ -99,9 +107,40 @@ fn run(text: String) -> () fails SqlError use { Sql } {
   ()
 }
 
-## A statement as the host reads it, with the parameters as `Sql.scalar_params` gives them.
+## A statement as the host reads it, with the parameters as `Sql.scalar_params` gives them and
+## Binary as `{"blob": "<hex>"}`. This has to come before Json.to_string, which would write Binary
+## as base64 text.
 fn encode(statement: Statement) -> Dynamic {
-  Dynamic.object([("text", Text(statement.text)), ("params", Items(statement.scalar_params()))])
+  params = statement.scalar_params().map(host_param)
+  Dynamic.object([("text", Text(statement.text)), ("params", Items(params))])
+}
+
+fn host_param(p: Dynamic) -> Dynamic {
+  p match {
+    Binary(b) -> Dynamic.object([("blob", Text(b.to_hex()))])
+    _         -> p
+  }
+}
+
+## A row from the host, with each column of the form `{"blob": "<hex>"}` back as Binary.
+fn row(d: Dynamic) -> Dynamic {
+  d match {
+    Fields(columns) -> Fields(columns.map_values(column))
+    _               -> panic("bun:sqlite gave a row that is not an object")
+  }
+}
+
+fn column(value: Dynamic) -> Dynamic {
+  value match {
+    Fields(m) -> m.to_list() match {
+      [("blob", Text(hex))] -> Bytes.from_hex(hex) match {
+        Some(b) -> Binary(b)
+        None    -> panic("bun:sqlite gave a BLOB that is not hexadecimal")
+      }
+      _ -> panic("bun:sqlite gave a column that is an object")
+    }
+    _ -> value
+  }
 }
 
 fn result(o: HostOutcome) -> Dynamic fails SqlError {
