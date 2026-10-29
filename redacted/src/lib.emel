@@ -1,3 +1,13 @@
+# A value that is not shown: `Show` gives `<redacted>`, so a record holding a secret can be logged.
+#
+# A Redacted can be read with `Decode` and described with `Shaped`, but has no `Encode`: what is
+# read in as a secret cannot be written out to JSON by mistake. `reveal` takes the value out.
+
+import Std.Map.{Map}
+import Dynamic.{Dynamic, Decode, DecodeError, DecodeErrors, Null, Bool, Number, Text, Items, Fields}
+import Dynamic.Number
+import Shape.{Shape, Shaped}
+
 pub opaque type Redacted[A](value: A)
 
 pub fn make[A](value: A) -> Redacted[A] { Redacted(value:) }
@@ -5,4 +15,48 @@ pub fn reveal[A](r: Redacted[A]) -> A { r.value }
 
 impl Redacted[A]: Show {
   fn show(self) { "<redacted>" }
+}
+
+## Reads as `A` does. A failure keeps the kind of the value it found, but not the value.
+impl Redacted[A: Decode]: Decode {
+  fn from_dynamic(d) {
+    make(Decode.from_dynamic(d)) escape {
+      DecodeError(expected:, actual:, path:) -> fail DecodeError(
+        expected:,
+        actual: hide(actual),
+        path:,
+      )
+    }
+  }
+
+  fn from_dynamic_all(d) {
+    make(Decode.from_dynamic_all(d)) escape {
+      DecodeErrors(errors:) -> fail DecodeErrors(
+        errors: List.map(errors, fn(e) {
+          DecodeError(expected: e.expected, actual: hide(e.actual), path: e.path)
+        }),
+      )
+    }
+  }
+}
+
+## The shape of `A` with the note `writeOnly`: in JSON Schema, a value that is sent but never
+## given back.
+impl Redacted[A: Shaped]: Shaped {
+  fn shape_in(proxy, visiting) {
+    inner: Option[A] = None
+    Shaped.shape_in(inner, visiting) |> Shape.annotate("writeOnly", Bool(True))
+  }
+}
+
+# A value of the same kind as `d`, with nothing of `d` in it.
+fn hide(d: Dynamic) -> Dynamic {
+  d match {
+    Null      -> Null
+    Bool(_)   -> Bool(False)
+    Number(_) -> Number(Number.from_int(0))
+    Text(_)   -> Text("<redacted>")
+    Items(_)  -> Items([])
+    Fields(_) -> Fields(Map.empty())
+  }
 }

@@ -1,0 +1,47 @@
+import Dynamic
+import Dynamic.{Decode, DecodeError, DecodeErrors, Text, Bool}
+import Shape.{Shape, Shaped, Annotated}
+import Lib.{Redacted}
+
+@test
+fn it_is_not_shown() {
+  assert "#{Lib.make("hunter2")}" == "<redacted>"
+}
+
+@test
+fn it_reads_as_what_it_holds() {
+  secret: Redacted[String] = Decode.from_dynamic(Text("hunter2")) escape {
+    DecodeError(..) -> panic("failed")
+  }
+  assert Lib.reveal(secret) == "hunter2"
+}
+
+@test
+fn a_failure_does_not_hold_the_value() {
+  found: Option[(String, Dynamic.Dynamic)] = {
+    n: Redacted[Int] = Decode.from_dynamic(Text("hunter2"))
+    _ = n
+    None
+  } escape {
+    DecodeError(expected:, actual:, path: _) -> Some((expected, actual))
+  }
+  assert found == Some(("number", Text("<redacted>")))
+}
+
+@test
+fn every_failure_of_from_dynamic_all_is_hidden() {
+  found: List[DecodeError] = {
+    ns: Redacted[List[Int]] = Decode.from_dynamic_all(Dynamic.Items([Text("a"), Text("b")]))
+    _ = ns
+    []
+  } escape {
+    DecodeErrors(errors:) -> errors
+  }
+  assert List.map(found, fn(e) { e.actual }) == [Text("<redacted>"), Text("<redacted>")]
+}
+
+@test
+fn its_shape_is_what_it_holds_written_only() {
+  p: Option[Redacted[String]] = None
+  assert Shaped.shape(p) == Annotated(shape: Shape.String, notes: [("writeOnly", Bool(True))])
+}
