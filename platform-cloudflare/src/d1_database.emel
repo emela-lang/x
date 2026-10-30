@@ -3,8 +3,16 @@
 # CloudflareD1 uses the D1 database bound under the name it is given
 # (`with CloudflareD1(binding: "DB")`). CloudflarePlatform has it with `DB`; to use another one,
 # list it after the layer: `with CloudflarePlatform, CloudflareD1(binding: "ANALYTICS") { ... }`.
+#
+# Statements go to the host and rows come back as JSON text. JSON has no bytes, and Json.to_string
+# writes Binary as base64 text, which D1 would bind as TEXT; so a Binary parameter is turned into
+# `{"blob": "<hex>"}` before the statement is written as JSON, and the host binds that as a
+# Uint8Array. D1 gives a BLOB in a row as an array of numbers, which the host writes the same way,
+# and `row` turns it back into Binary. D1 gives no value that is an object, so the form cannot be
+# mistaken for another value.
 
-import Dynamic.{Dynamic, Number, Text, Items}
+import Std.Bytes.{Bytes}
+import Dynamic.{Dynamic, Number, Text, Items, Fields, Binary}
 import Dynamic.Number.{OutOfRange}
 import Json.{SyntaxError}
 import Sql
@@ -34,6 +42,7 @@ fn outcome_value(o: HostOutcome) -> String use {}
 ## message as SqlError; a `binding` that names no D1 database is a defect.
 ##
 ## D1 is SQLite: a boolean comes back as 0 or 1 and JSON as Text, and a Bool is passed as 1 or 0.
+## A BLOB is Binary, and a Binary parameter is bound as a BLOB.
 ## A number is a JavaScript number on the way, so an integer beyond 2^53 loses digits. D1 has no
 ## Transaction: use `batch` for statements that must take effect together.
 pub handler CloudflareD1(binding: String): Sql {
@@ -41,7 +50,8 @@ pub handler CloudflareD1(binding: String): Sql {
     CloudflareD1(binding:)
   }
   suspend fn query(statement, resume) {
-    resume(rows(result(d1_query(self.binding, Json.to_string(encode(statement))))))
+    found = rows(result(d1_query(self.binding, Json.to_string(encode(statement)))))
+    resume(found.map(row))
   }
   suspend fn execute(statement, resume) {
     resume(count(result(d1_execute(self.binding, Json.to_string(encode(statement))))))
@@ -52,9 +62,40 @@ pub handler CloudflareD1(binding: String): Sql {
   }
 }
 
-## A statement as the host reads it, with the parameters as `Sql.scalar_params` gives them.
+## A statement as the host reads it, with the parameters as `Sql.scalar_params` gives them and
+## Binary as `{"blob": "<hex>"}`. This has to come before Json.to_string, which would write Binary
+## as base64 text.
 fn encode(statement: Statement) -> Dynamic {
-  Dynamic.object([("text", Text(statement.text)), ("params", Items(statement.scalar_params()))])
+  params = statement.scalar_params().map(host_param)
+  Dynamic.object([("text", Text(statement.text)), ("params", Items(params))])
+}
+
+fn host_param(p: Dynamic) -> Dynamic {
+  p match {
+    Binary(b) -> Dynamic.object([("blob", Text(b.to_hex()))])
+    _         -> p
+  }
+}
+
+## A row from the host, with each column of the form `{"blob": "<hex>"}` back as Binary.
+fn row(d: Dynamic) -> Dynamic {
+  d match {
+    Fields(columns) -> Fields(columns.map_values(column))
+    _               -> panic("D1 gave a row that is not an object")
+  }
+}
+
+fn column(value: Dynamic) -> Dynamic {
+  value match {
+    Fields(m) -> m.to_list() match {
+      [("blob", Text(hex))] -> Bytes.from_hex(hex) match {
+        Some(b) -> Binary(b)
+        None    -> panic("D1 gave a BLOB that is not hexadecimal")
+      }
+      _ -> panic("D1 gave a column that is an object")
+    }
+    _ -> value
+  }
 }
 
 fn result(o: HostOutcome) -> Dynamic fails SqlError {

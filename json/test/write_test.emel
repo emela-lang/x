@@ -1,7 +1,9 @@
+import Std.Bytes.{Bytes}
 import Std.Map
-import Dynamic.{Dynamic, Null, Bool, Text, Items, Fields}
+import Dynamic.{Dynamic, Null, Bool, Text, Items, Fields, Binary}
 import Dynamic.Number
 import Lib
+import Base64
 
 fn number(n: Int) -> Dynamic {
   Dynamic.Number(Number.from_int(n))
@@ -38,4 +40,18 @@ fn round_trips() {
   s = "{\"a\":[1,-0.5,1e-7,\"x\\ny\",true,null,{}],\"b\":{\"c\":\"\\u0001あ\"}}"
   assert Lib.to_string(Lib.parse(s)) == s
   assert Lib.parse(Lib.to_string(Lib.parse(s))) == Lib.parse(s)
+}
+
+@test
+fn writes_binary_as_standard_base64() {
+  assert Lib.to_string(Binary(Bytes.empty())) == "\"\""
+  assert Lib.to_string(Binary(Bytes.hex("fbff"))) == "\"+/8=\""
+  assert Lib.to_string(Items([Binary(Bytes.encode_utf8("foobar"))])) == "[\"Zm9vYmFy\"]"
+}
+
+@test
+fn reads_binary_back_as_text() {
+  b = Bytes.hex("00ff10")
+  assert Lib.parse(Lib.to_string(Binary(b))) == Text("AP8Q")
+  assert Base64.decode("AP8Q") == b
 }

@@ -1,6 +1,6 @@
 [pome]
 name = "github.com/emela-lang/x/shape"
-version = "0.3.0"
+version = "0.3.1"
 emela = "0.26.0"
 
 [dependencies]

@@ -1,3 +1,4 @@
+import Std.Bytes.{Bytes}
 import Std.Map.{Map}
 import Number.{OutOfRange}
 
@@ -8,6 +9,7 @@ pub enum Dynamic {
   Text(String)
   Items(List[Dynamic])
   Fields(Map[String, Dynamic])
+  Binary(Bytes)
 } derive Eq, Show
 
 pub enum Segment {
@@ -77,6 +79,7 @@ pub fn kind(value: Dynamic) -> String {
     Text(_)   -> "text"
     Items(_)  -> "items"
     Fields(_) -> "fields"
+    Binary(_) -> "binary"
   }
 }
 
@@ -84,6 +87,13 @@ pub fn string(value: Dynamic) -> String fails DecodeError {
   value match {
     Text(s) -> s
     _       -> fail DecodeError(expected: "text", actual: value, path: [])
+  }
+}
+
+pub fn bytes(value: Dynamic) -> Bytes fails DecodeError {
+  value match {
+    Binary(b) -> b
+    _         -> fail DecodeError(expected: "binary", actual: value, path: [])
   }
 }
 
@@ -361,6 +371,20 @@ impl Bool: Encode {
 impl Bool: Decode {
   fn from_dynamic(d) {
     bool(d)
+  }
+}
+
+impl Bytes: Encode {
+  fn to_dynamic(self) {
+    Binary(self)
+  }
+}
+
+## Reads only Binary. Text is not read as base64 or hexadecimal: the format of the text is the
+## caller's to choose.
+impl Bytes: Decode {
+  fn from_dynamic(d) {
+    bytes(d)
   }
 }
 
