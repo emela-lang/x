@@ -1,6 +1,6 @@
 [pome]
 name = "github.com/emela-lang/x/config"
-version = "0.1.0"
+version = "0.1.1"
 emela = "0.26.0"
 
 [dependencies]
