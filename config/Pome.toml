@@ -9,8 +9,3 @@ emela = "0.27.0"
 
 [dev-dependencies]
 "github.com/emela-lang/x/redacted" = "v0.5.0"
-
-[replace]
-"github.com/emela-lang/x/dynamic" = { path = "../dynamic" }
-"github.com/emela-lang/x/shape" = { path = "../shape" }
-"github.com/emela-lang/x/redacted" = { path = "../redacted" }
