@@ -24,4 +24,4 @@ Uuid.parse("0190a5c8-5f3e-7b2d-9c4a-1e2f3a4b5c6d") # fails ParseError if not a U
 
 ## 必要な emela
 
-`Std.Bytes` を使うので emela 0.26.0 以降．
+`|x|` の無名関数と `Std.Exit` を使うので emela 0.27.0 以降．

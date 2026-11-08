@@ -1,14 +1,14 @@
 [pome]
 name = "github.com/emela-lang/x/config"
-version = "0.1.2"
+version = "0.2.0"
 emela = "0.27.0"
 
 [dependencies]
 "github.com/emela-lang/x/dynamic" = "v0.5.1"
-"github.com/emela-lang/x/shape" = "v0.3.2"
+"github.com/emela-lang/x/shape" = "v0.4.0"
 
 [dev-dependencies]
-"github.com/emela-lang/x/redacted" = "v0.4.1"
+"github.com/emela-lang/x/redacted" = "v0.5.0"
 
 [replace]
 "github.com/emela-lang/x/dynamic" = { path = "../dynamic" }

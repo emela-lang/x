@@ -24,7 +24,7 @@ npx wrangler dev      # build.command で worker/build.sh が走る
 npx wrangler deploy   # wrangler.toml の KV と D1 の id を本物に替えてから
 ```
 
-`emela` は 0.25.0 以降を PATH に置く（`@entry(Http.serve)` が 0.25.0 から）．
+`emela` は 0.27.0 以降を PATH に置く（`|x|` の無名関数と `uses` の節が 0.27.0 から）．
 
 ## 仕組み
 

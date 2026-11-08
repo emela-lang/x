@@ -57,7 +57,7 @@ APP_PORT: expected number, found text; APP_DATABASE_URL: is not set
 
 ## 秘密値
 
-`Redacted[String]` のフィールドは，ほかのフィールドと同じく `Shaped.shape_in` と `Decode.from_dynamic` で書ける．impl は x/redacted v0.3.0 にある．
+`Redacted[String]` のフィールドは，ほかのフィールドと同じく `Shaped.shape_in` と `Decode.from_dynamic` で書ける．impl は x/redacted v0.5.0 にある．
 
 - `Redacted` は `Show` で `<redacted>` と出るので，設定 record をログに出しても値は出ない
 - `Redacted` の `Decode` は，失敗したときの `DecodeError` にも値を残さない
