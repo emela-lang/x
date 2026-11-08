@@ -1,6 +1,6 @@
 import Std.State.{State}
 import Std.Cause.{Die}
-import Std.Fiber.{Success, Failure}
+import Std.Exit.{Success, Failure}
 import Std.Bytes.{Bytes}
 import Dynamic.{Dynamic, Decode, DecodeErrors, Text, Bool, Items, Binary}
 import Dynamic.Number
@@ -205,7 +205,7 @@ fn a_transaction_does_not_nest() {
 @test
 fn a_defect_in_a_transaction_rolls_back_and_goes_on() {
   (kind, after) = State.run(answering([]), || {
-    exit = Fiber.attempt(|| {
+    exit = Exit.attempt(|| {
       with TestSql, TestTransaction {
         Lib.transaction(|| {
           Lib.execute("insert a", [])

@@ -1,6 +1,6 @@
 import Std.Bytes.{Bytes}
 import Std.Clock.{TestClock}
-import Std.Fiber.{Success, Failure}
+import Std.Exit.{Success, Failure}
 import Std.Instant.{Instant}
 import Std.Random.{Random}
 import Std.State.{State}
@@ -40,7 +40,7 @@ fn v7_from(ms: Int, ints: List[Int]) -> Uuid {
 }
 
 fn parsed(s: String) -> Option[Uuid] {
-  Fiber.attempt(|| Lib.parse(s)) match {
+  Exit.attempt(|| Lib.parse(s)) match {
     Success(u) -> Some(u)
     Failure(_) -> None
   }

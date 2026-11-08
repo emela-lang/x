@@ -5,7 +5,7 @@
 # ```emela
 # import Kv.{Kv}
 #
-# fn remember(name: String) -> Bool use { Kv } {
+# fn remember(name: String) -> Bool uses { Kv } {
 #   kv = use Kv
 #   seen = kv.get(name) != None
 #   kv.put(name, "seen")
@@ -34,7 +34,7 @@ pub effect Kv {
 ## with the entries to start from:
 ##
 ## ```emela
-## (seen, store) = State.run(Map.empty(), fn() { with TestKv { remember("a") } })
+## (seen, store) = State.run(Map.empty(), || with TestKv { remember("a") })
 ## ```
 ##
 ## Every operation takes effect at once and never suspends.

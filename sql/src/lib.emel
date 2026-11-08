@@ -7,7 +7,7 @@
 # import Sql.{Sql, SqlError}
 # import Dynamic.{DecodeErrors, Text}
 #
-# fn todos(owner: String) -> List[TodoRow] fails SqlError | DecodeErrors use { Sql } {
+# fn todos(owner: String) -> List[TodoRow] fails SqlError | DecodeErrors uses { Sql } {
 #   Sql.all("select id, title from todos where owner = ?", [Text(owner)])
 # }
 # ```
@@ -37,7 +37,7 @@
 
 import Dynamic.{Dynamic, Decode, DecodeErrors, Text, Items, Fields}
 import Json
-import Std.Fiber.{Success, Failure}
+import Std.Exit.{Success, Failure}
 import Std.State.{State}
 
 ## A statement and the values of its `?`, in order.
@@ -104,7 +104,7 @@ pub fn transaction[A, E, R](body: fn() -> A fails E uses { Sql, R }) -> A
   uses { Sql, Transaction, R } {
   tx = use Transaction
   tx.begin()
-  Fiber.attempt(body) match {
+  Exit.attempt(body) match {
     Success(value) -> {
       tx.commit()
       value
@@ -132,8 +132,8 @@ pub type TestDatabase(respond: fn(Statement, Int) -> Option[List[Dynamic]], sent
 ## The test handler of Sql. The database is `State[TestDatabase]`, so use it inside `State.run`:
 ##
 ## ```emela
-## db = TestDatabase(respond: fn(s, n) { Some([]) }, sent: [])
-## (_, after) = State.run(db, fn() { with TestSql { Sql.execute("delete from todos", []) } })
+## db = TestDatabase(respond: |_, _| Some([]), sent: [])
+## (_, after) = State.run(db, || with TestSql { Sql.execute("delete from todos", []) })
 ## assert after.sent == [Ran(Statement(text: "delete from todos", params: []))]
 ## ```
 ##

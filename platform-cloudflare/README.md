@@ -13,7 +13,7 @@ pub fn app(request: Request) -> Response {
   with CloudflarePlatform { route(request) }
 }
 
-fn route(request: Request) -> Response use { Console, Env, Kv } { ... }
+fn route(request: Request) -> Response uses { Console, Env, Kv } { ... }
 ```
 
 ## 動かす

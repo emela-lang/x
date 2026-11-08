@@ -8,7 +8,7 @@ import Time
 import Time.Date.{Date}
 import Time.Offset
 
-fn stamp() -> String use { Clock } {
+fn stamp() -> String uses { Clock } {
   jst = Offset.from_hours(9).or(Offset.utc())
   Time.now(jst).to_string() # "2026-10-29T09:00:00.000+09:00"
 }
@@ -30,7 +30,7 @@ fn due(s: String) -> Date fails ParseError {
 ## 仕組み
 
 - 時間軸上の点は `Std.Instant`，長さは `Std.Duration` で，このパッケージは自前の Instant と Duration を作らない．Clock の `now` が返すのも，x/uuid の `timestamp` が返すのも `Std.Instant` なので，変換を挟まずにここの関数へ渡せる．Unix ミリ秒との相互変換は `Instant.from_unix_milliseconds` と `Instant.to_unix_milliseconds` が持っている（仕様 15.4 の「同じ変換を2つの型に置かない」に従う）
-- 現在時刻は Std の Clock から取る．`Time.now(offset)` と `Time.today(offset)` は `use { Clock }` で，新しい effect は増やさない．テストでは TestClock に時刻を渡して固定する（`test/time_test.emel`）
+- 現在時刻は Std の Clock から取る．`Time.now(offset)` と `Time.today(offset)` は `uses { Clock }` で，新しい effect は増やさない．テストでは TestClock に時刻を渡して固定する（`test/time_test.emel`）
 - 精度はミリ秒で，閏秒は数えない．Instant がそう決まっているため．`23:59:60` はパースで失敗する．小数秒の 4 桁目以降は切り捨てる
 - 暦は先発グレゴリオ暦で，`Instant.to_string` と同じ数え方をする．年 0 は紀元前 1 年．0 から 9999 の外の年は符号と 6 桁で書く（`+010000-01-01`，`-000001-12-31`）
 - `to_string` はミリ秒を常に 3 桁書く（`09:05:00.000`）．どの値も同じ幅になり，文字列のまま並べても時刻の順になる．UTC の `OffsetDateTime.to_string` は `Instant.to_string` と同じ文字列を返す
@@ -62,7 +62,7 @@ import Time.Offset
 import Time.OffsetDateTime
 
 # UUID が作られた時刻を RFC 3339 で
-Uuid.timestamp(u).map(fn(t) { OffsetDateTime.from_instant(t, Offset.utc()).to_string() })
+Uuid.timestamp(u).map(|t| OffsetDateTime.from_instant(t, Offset.utc()).to_string())
 
 # RFC 3339 の文字列を Unix ミリ秒に
 Time.parse_instant("2025-10-29T00:00:00.123Z").to_unix_milliseconds() # 1761696000123

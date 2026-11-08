@@ -71,7 +71,7 @@ pub trait Shaped {
 ## ```emela
 ## impl Team: Shaped {
 ##   fn shape_in(proxy, visiting) {
-##     Shape.visit("Team", visiting, fn(visiting) {
+##     Shape.visit("Team", visiting, |visiting| {
 ##       lead: Option[Member] = None
 ##       Record(name: "Team", fields: [Field(name: "lead", shape: Shaped.shape_in(lead, visiting))])
 ##     })

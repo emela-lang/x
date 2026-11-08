@@ -3,7 +3,7 @@
 # ```emela
 # import Uuid.{Uuid}
 #
-# fn new_id() -> String use { Clock, Random } {
+# fn new_id() -> String uses { Clock, Random } {
 #   Uuid.v7().to_string()
 # }
 # ```

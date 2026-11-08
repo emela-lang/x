@@ -9,7 +9,7 @@ type MemberPath(team_id: String, member_id: String)
 
 impl MemberPath: Shaped {
   fn shape_in(proxy, visiting) {
-    Shape.visit("MemberPath", visiting, fn(visiting) {
+    Shape.visit("MemberPath", visiting, |visiting| {
       team: Option[String] = None
       member: Option[String] = None
       Record(
@@ -55,7 +55,7 @@ pub opaque type Quantity(value: Int)
 pub error InvalidQuantity(given: Int, reason: String)
 
 pub fn from_int(n: Int) -> Quantity fails InvalidQuantity {
-  Quantity(value: Rule.check_or(n, QUANTITY, fn(rule) {
+  Quantity(value: Rule.check_or(n, QUANTITY, |rule| {
     InvalidQuantity(given: n, reason: Rule.message(rule))
   }))
 }
