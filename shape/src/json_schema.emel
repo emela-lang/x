@@ -207,10 +207,12 @@ fn pointer_token(name: String) -> String {
 ## and digits and `-._~!$&'()*+,;=:@/?` (RFC 3986). Names in Emela are ASCII.
 fn fragment_char(c: String) -> Bool {
   c.code_points() match {
-    [p] -> (p >= 0x30 && p <= 0x39)
-      || (p >= 0x41 && p <= 0x5A)
-      || (p >= 0x61 && p <= 0x7A)
-      || "-._~!$&'()*+,;=:@/?".contains(c)
+    [p] -> (
+      (p >= 0x30 && p <= 0x39)
+        || (p >= 0x41 && p <= 0x5A)
+        || (p >= 0x61 && p <= 0x7A)
+        || "-._~!$&'()*+,;=:@/?".contains(c)
+    )
     _ -> False
   }
 }
