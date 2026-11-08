@@ -45,7 +45,7 @@ impl Redacted[A: Decode]: Decode {
   fn from_dynamic_all(d) {
     make(Decode.from_dynamic_all(d)) escape {
       DecodeErrors(errors:) -> fail DecodeErrors(
-        errors: errors.map(fn(e) {
+        errors: errors.map(|e| {
           DecodeError(expected: e.expected, actual: hide(e.actual), path: e.path)
         }),
       )

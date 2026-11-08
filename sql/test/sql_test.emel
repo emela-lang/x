@@ -27,8 +27,8 @@ impl TodoRow: Decode {
   }
 
   fn from_dynamic_all(d) {
-    id = Dynamic.attempt(fn() { d.field_all("id", Decode.from_dynamic_all) })
-    title = Dynamic.attempt(fn() { d.field_all("title", Decode.from_dynamic_all) })
+    id = Dynamic.attempt(|| d.field_all("id", Decode.from_dynamic_all))
+    title = Dynamic.attempt(|| d.field_all("title", Decode.from_dynamic_all))
     (id, title) match {
       (Dynamic.Decoded(id), Dynamic.Decoded(title)) -> TodoRow(id:, title:)
       _ -> fail DecodeErrors(errors: [id.errors_of(), title.errors_of()].flatten())
@@ -43,7 +43,7 @@ fn row(id: Int, title: String) -> Dynamic {
 }
 
 fn answering(rows: List[Dynamic]) -> TestDatabase {
-  TestDatabase(respond: fn(_, _) { Some(rows) }, sent: [])
+  TestDatabase(respond: |_, _| Some(rows), sent: [])
 }
 
 fn ran(text: String) -> Sent {
@@ -53,7 +53,7 @@ fn ran(text: String) -> Sent {
 @test
 fn all_reads_every_row() {
   db = answering([row(1, "a"), row(2, "b")])
-  (rows, after) = State.run(db, fn() {
+  (rows, after) = State.run(db, || {
     with TestSql {
       todos: List[TodoRow] = Lib.all("select id, title from todos where done = ?", [Bool(False)])
       todos
@@ -66,7 +66,7 @@ fn all_reads_every_row() {
 
 @test
 fn first_is_none_without_rows() {
-  (found, _) = State.run(answering([]), fn() {
+  (found, _) = State.run(answering([]), || {
     with TestSql {
       todo: Option[TodoRow] = Lib.first(
         "select id, title from todos where id = ?",
@@ -81,7 +81,7 @@ fn first_is_none_without_rows() {
 @test
 fn a_row_of_the_wrong_shape_fails_with_every_field() {
   bad = Dynamic.object([("id", Text("x"))])
-  (failure, _) = State.run(answering([bad]), fn() {
+  (failure, _) = State.run(answering([bad]), || {
     with TestSql {
       read: List[TodoRow] = Lib.all("select * from todos", []) escape {
         DecodeErrors(errors:) -> fail SqlError(message: "#{errors.length()}")
@@ -97,7 +97,7 @@ fn a_row_of_the_wrong_shape_fails_with_every_field() {
 @test
 fn items_are_sent_as_they_were_given() {
   tags = Items([Text("a"), Text("b")])
-  (_, after) = State.run(answering([]), fn() {
+  (_, after) = State.run(answering([]), || {
     with TestSql { Lib.execute("update todos set tags = json(?)", [tags]) }
   })
   assert after.sent == [Ran(Statement(text: "update todos set tags = json(?)", params: [tags]))]
@@ -105,8 +105,8 @@ fn items_are_sent_as_they_were_given() {
 
 @test
 fn a_statement_with_no_answer_fails() {
-  db = TestDatabase(respond: fn(_, _) { None }, sent: [])
-  (message, _) = State.run(db, fn() {
+  db = TestDatabase(respond: |_, _| None, sent: [])
+  (message, _) = State.run(db, || {
     with TestSql {
       Lib.execute("delete from todos", [])
       ""
@@ -119,8 +119,8 @@ fn a_statement_with_no_answer_fails() {
 
 @test
 fn batch_runs_in_order_and_stops_at_a_failure() {
-  db = TestDatabase(respond: fn(_, n) { if n == 1 { None } else { Some([]) } }, sent: [])
-  (_, after) = State.run(db, fn() {
+  db = TestDatabase(respond: |_, n| if n == 1 { None } else { Some([]) }, sent: [])
+  (_, after) = State.run(db, || {
     with TestSql {
       (use Sql).batch(
         [
@@ -139,9 +139,9 @@ fn batch_runs_in_order_and_stops_at_a_failure() {
 
 @test
 fn a_transaction_that_ends_commits() {
-  (n, after) = State.run(answering([]), fn() {
+  (n, after) = State.run(answering([]), || {
     with TestSql, TestTransaction {
-      Lib.transaction(fn() {
+      Lib.transaction(|| {
         Lib.execute("insert a", [])
         Lib.execute("insert b", [])
         2
@@ -154,9 +154,9 @@ fn a_transaction_that_ends_commits() {
 
 @test
 fn a_transaction_that_fails_rolls_back_with_the_same_failure() {
-  (reason, after) = State.run(answering([]), fn() {
+  (reason, after) = State.run(answering([]), || {
     with TestSql, TestTransaction {
-      Lib.transaction(fn() {
+      Lib.transaction(|| {
         Lib.execute("insert a", [])
         fail Rejected(reason: "full")
       })
@@ -171,10 +171,10 @@ fn a_transaction_that_fails_rolls_back_with_the_same_failure() {
 
 @test
 fn a_failed_statement_rolls_back() {
-  db = TestDatabase(respond: fn(_, n) { if n == 1 { None } else { Some([]) } }, sent: [])
-  (_, after) = State.run(db, fn() {
+  db = TestDatabase(respond: |_, n| if n == 1 { None } else { Some([]) }, sent: [])
+  (_, after) = State.run(db, || {
     with TestSql, TestTransaction {
-      Lib.transaction(fn() {
+      Lib.transaction(|| {
         Lib.execute("insert a", [])
         Lib.execute("insert b", [])
         ()
@@ -188,10 +188,10 @@ fn a_failed_statement_rolls_back() {
 
 @test
 fn a_transaction_does_not_nest() {
-  (message, after) = State.run(answering([]), fn() {
+  (message, after) = State.run(answering([]), || {
     with TestSql, TestTransaction {
-      Lib.transaction(fn() {
-        Lib.transaction(fn() { () })
+      Lib.transaction(|| {
+        Lib.transaction(|| ())
         ""
       })
     } escape {
@@ -204,10 +204,10 @@ fn a_transaction_does_not_nest() {
 
 @test
 fn a_defect_in_a_transaction_rolls_back_and_goes_on() {
-  (kind, after) = State.run(answering([]), fn() {
-    exit = Fiber.attempt(fn() {
+  (kind, after) = State.run(answering([]), || {
+    exit = Fiber.attempt(|| {
       with TestSql, TestTransaction {
-        Lib.transaction(fn() {
+        Lib.transaction(|| {
           Lib.execute("insert a", [])
           panic("broken")
         })
@@ -256,12 +256,12 @@ impl FileRow: Decode {
 fn a_blob_is_passed_and_read_as_binary() {
   b = Bytes.hex("89504e470d0a1a0a00")
   db = TestDatabase(
-    respond: fn(s, _) {
-      Some(s.params.map(fn(p) { Dynamic.object([("name", Text("logo.png")), ("data", p)]) }))
+    respond: |s, _| {
+      Some(s.params.map(|p| Dynamic.object([("name", Text("logo.png")), ("data", p)])))
     },
     sent: [],
   )
-  (files, after) = State.run(db, fn() {
+  (files, after) = State.run(db, || {
     with TestSql {
       found: List[FileRow] = Lib.all("select ? as data", [Binary(b)])
       found

@@ -22,14 +22,14 @@ fn int(n: Int) -> Dynamic {
   Dynamic.Number(Number.from_int(n))
 }
 
-fn setup() -> () fails SqlError use { Sql } {
+fn setup() -> () fails SqlError uses { Sql } {
   Sql.execute("create table notes (id integer primary key, body text not null)", [])
   ()
 }
 
-fn bodies() -> List[String] fails SqlError | DecodeErrors use { Sql } {
+fn bodies() -> List[String] fails SqlError | DecodeErrors uses { Sql } {
   notes: List[Note] = Sql.all("select id, body from notes order by id", [])
-  notes.map(fn(n) { n.body })
+  notes.map(|n| n.body)
 }
 
 @test
@@ -110,8 +110,8 @@ fn a_batch_takes_effect_together_or_not_at_all() {
 fn a_transaction_commits_or_rolls_back() {
   after = with BunSqlite(path: ":memory:"), BunSqliteTransaction {
     setup()
-    Sql.transaction(fn() { Sql.execute("insert into notes (body) values ('kept')", []) })
-    reason = Sql.transaction(fn() {
+    Sql.transaction(|| Sql.execute("insert into notes (body) values ('kept')", []))
+    reason = Sql.transaction(|| {
       Sql.execute("insert into notes (body) values ('dropped')", [])
       fail Rejected(reason: "no")
     }) escape {
@@ -125,8 +125,8 @@ fn a_transaction_commits_or_rolls_back() {
 @test
 fn a_transaction_does_not_nest() {
   message = with BunSqlite(path: ":memory:"), BunSqliteTransaction {
-    Sql.transaction(fn() {
-      Sql.transaction(fn() { () })
+    Sql.transaction(|| {
+      Sql.transaction(|| ())
       ""
     })
   } escape {
@@ -167,7 +167,7 @@ fn a_blob_is_written_and_read_as_bytes() {
   found = with BunSqlite(path: ":memory:") {
     Sql.execute("create table files (id integer primary key, name text, data blob not null)", [])
     (use Sql).batch(
-      written.map(fn(f) {
+      written.map(|f| {
         Statement(
           text: "insert into files (name, data) values (?, ?)",
           params: [Text(f.name), Binary(f.data)],

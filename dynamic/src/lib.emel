@@ -22,7 +22,7 @@ pub error DecodeError(expected: String, actual: Dynamic, path: List[Segment])
 
 impl DecodeError: Show {
   fn show(self) {
-    path = self.path.map(fn(p) {
+    path = self.path.map(|p| {
       p match {
         Key(k)   -> ".#{k}"
         Index(i) -> "[#{i}]"
@@ -140,7 +140,7 @@ fn each[A](xs: List[Dynamic], i: Int, item: fn(Dynamic) -> A fails DecodeError) 
 fn at_all[A](segment: Segment, decoder: fn(Dynamic) -> A fails DecodeErrors, value: Dynamic) -> A
   fails DecodeErrors {
   decoder(value) escape {
-    DecodeErrors(errors:) -> fail DecodeErrors(errors: errors.map(fn(e) { under(segment, e) }))
+    DecodeErrors(errors:) -> fail DecodeErrors(errors: errors.map(|e| under(segment, e)))
   }
 }
 
@@ -156,7 +156,7 @@ fn one(e: DecodeError) -> DecodeErrors {
 fn all_decoded[A](attempts: List[Attempt[A]]) -> List[A] fails DecodeErrors {
   errors = attempts.flat_map(errors_of)
   if errors.is_empty() {
-    attempts.filter_map(fn(a) {
+    attempts.filter_map(|a| {
       a match {
         Decoded(x) -> Some(x)
         Failed(_)  -> None
@@ -181,7 +181,7 @@ fn at[A](segment: Segment, decoder: fn(Dynamic) -> A fails DecodeError, value: D
 pub fn list[A](
   item: fn(Dynamic) -> A fails DecodeError,
 ) -> fn(Dynamic) -> List[A] fails DecodeError {
-  fn(value) {
+  |value| {
     value match {
       Items(xs) -> each(xs, 0, item)
       _         -> fail DecodeError(expected: "items", actual: value, path: [])
@@ -192,7 +192,7 @@ pub fn list[A](
 pub fn optional[A](
   decoder: fn(Dynamic) -> A fails DecodeError,
 ) -> fn(Dynamic) -> Option[A] fails DecodeError {
-  fn(value) {
+  |value| {
     value match {
       Null -> None
       _    -> Some(decoder(value))
@@ -203,9 +203,9 @@ pub fn optional[A](
 pub fn dict[V](
   value: fn(Dynamic) -> V fails DecodeError,
 ) -> fn(Dynamic) -> Map[String, V] fails DecodeError {
-  fn(subject) {
+  |subject| {
     subject match {
-      Fields(m) -> m.fold(Map.empty(), fn(acc, key, x) {
+      Fields(m) -> m.fold(Map.empty(), |acc, key, x| {
         acc.insert(key, at(Key(key), value, x))
       })
       _ -> fail DecodeError(expected: "fields", actual: subject, path: [])
@@ -217,7 +217,7 @@ pub fn index[A](
   n: Int,
   decoder: fn(Dynamic) -> A fails DecodeError,
 ) -> fn(Dynamic) -> A fails DecodeError {
-  fn(value) {
+  |value| {
     value match {
       Items(xs) -> at(
         Index(n),
@@ -278,7 +278,7 @@ pub fn index_all[A](
   n: Int,
   decoder: fn(Dynamic) -> A fails DecodeErrors,
 ) -> fn(Dynamic) -> A fails DecodeErrors {
-  fn(value) {
+  |value| {
     value match {
       Items(xs) -> xs.get(n) match {
         Some(x) -> at_all(Index(n), decoder, x)
@@ -330,7 +330,7 @@ impl Int64: Decode {
 
 impl Float: Encode {
   fn to_dynamic(self) {
-    Number.from_float(self).map(fn(n) { Number(n) }).or(Null)
+    Number.from_float(self).map(|n| Number(n)).or(Null)
   }
 }
 
@@ -402,8 +402,8 @@ impl List[A: Decode]: Decode {
   fn from_dynamic_all(d) {
     d match {
       Items(xs) -> {
-        attempts: List[Attempt[A]] = xs.enumerate().map(fn((i, x)) {
-          attempt(fn() { at_all(Index(i), Decode.from_dynamic_all, x) })
+        attempts: List[Attempt[A]] = xs.enumerate().map(|(i, x)| {
+          attempt(|| at_all(Index(i), Decode.from_dynamic_all, x))
         })
         all_decoded(attempts)
       }
@@ -436,7 +436,7 @@ impl Option[A: Decode]: Decode {
 
 impl Map[K: ObjectKey, V: Encode]: Encode {
   fn to_dynamic(self) {
-    self.fold(Map.empty(), fn(acc, key, value) {
+    self.fold(Map.empty(), |acc, key, value| {
       acc.insert(key.to_key(), value.to_dynamic())
     })
       |> Fields()
@@ -446,20 +446,20 @@ impl Map[K: ObjectKey, V: Encode]: Encode {
 impl Map[K: ObjectKey, V: Decode]: Decode {
   fn from_dynamic(d) {
     fields = dict(Decode.from_dynamic)(d)
-    fields.fold(Map.empty(), fn(acc, key, value) {
-      acc.insert(at(Key(key), fn(_) { ObjectKey.from_key(key) }, Text(key)), value)
+    fields.fold(Map.empty(), |acc, key, value| {
+      acc.insert(at(Key(key), |_| ObjectKey.from_key(key), Text(key)), value)
     })
   }
 
   fn from_dynamic_all(d) {
     d match {
       Fields(m) -> {
-        attempts: List[Attempt[(K, V)]] = m.to_list().map(fn((name, x)) {
-          attempt(fn() {
-            key: Attempt[K] = attempt(fn() {
-              at_all(Key(name), fn(_) { one_of(fn() { ObjectKey.from_key(name) }) }, Text(name))
+        attempts: List[Attempt[(K, V)]] = m.to_list().map(|(name, x)| {
+          attempt(|| {
+            key: Attempt[K] = attempt(|| {
+              at_all(Key(name), |_| one_of(|| ObjectKey.from_key(name)), Text(name))
             })
-            value: Attempt[V] = attempt(fn() { at_all(Key(name), Decode.from_dynamic_all, x) })
+            value: Attempt[V] = attempt(|| at_all(Key(name), Decode.from_dynamic_all, x))
             (key, value) match {
               (Decoded(k), Decoded(v)) -> (k, v)
               _ -> fail DecodeErrors(errors: key.errors_of().append(value.errors_of()))

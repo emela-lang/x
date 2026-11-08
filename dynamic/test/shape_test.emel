@@ -9,7 +9,7 @@ enum Shape {
 
 fn shape(value: Dynamic) -> Shape fails DecodeError {
   value.tag() match {
-    "Square" -> value.field("value", fn(payload) {
+    "Square" -> value.field("value", |payload| {
       Square(side: payload.field("side", Lib.string))
     })
     "Empty" -> Empty

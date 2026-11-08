@@ -75,7 +75,7 @@ pub fn parse(s: String) -> TimeOfDay fails ParseError {
       _                  -> None
     }
     [h, m, rest] -> (digits(h, 2), digits(m, 2), seconds(rest)) match {
-      (Some(h), Some(m), Some((sec, ms))) -> from_hms(h, m, sec).map(fn(t) {
+      (Some(h), Some(m), Some((sec, ms))) -> from_hms(h, m, sec).map(|t| {
         TimeOfDay(milliseconds: t.milliseconds + ms)
       })
       _ -> None
@@ -94,7 +94,7 @@ impl TimeOfDay: Show {
 fn seconds(s: String) -> Option[(Int, Int)] {
   parts = if s.contains(".") { s.split(".") } else { s.split(",") }
   parts match {
-    [sec] -> digits(sec, 2).map(fn(n) { (n, 0) })
+    [sec] -> digits(sec, 2).map(|n| (n, 0))
     [sec, fraction] -> (digits(sec, 2), milliseconds(fraction)) match {
       (Some(n), Some(ms)) -> Some((n, ms))
       _                   -> None
@@ -106,21 +106,21 @@ fn seconds(s: String) -> Option[(Int, Int)] {
 # One or more digits of a fraction of a second, as milliseconds. Digits after the third are dropped.
 fn milliseconds(fraction: String) -> Option[Int] {
   cps = fraction.code_points()
-  if cps.is_empty() || !cps.all(fn(c) { c >= 48 && c <= 57 }) {
+  if cps.is_empty() || !cps.all(|c| c >= 48 && c <= 57) {
     None
   } else {
     first = cps.take(3).append([48, 48, 48]).take(3)
-    Some(first.fold(from: 0, f: fn(n, c) { n * 10 + c - 48 }))
+    Some(first.fold(from: 0, f: |n, c| n * 10 + c - 48))
   }
 }
 
 ## The value of `s` if it is exactly `width` ASCII digits.
 fn digits(s: String, width: Int) -> Option[Int] {
   cps = s.code_points()
-  if cps.length() != width || !cps.all(fn(c) { c >= 48 && c <= 57 }) {
+  if cps.length() != width || !cps.all(|c| c >= 48 && c <= 57) {
     None
   } else {
-    Some(cps.fold(from: 0, f: fn(n, c) { n * 10 + c - 48 }))
+    Some(cps.fold(from: 0, f: |n, c| n * 10 + c - 48))
   }
 }
 

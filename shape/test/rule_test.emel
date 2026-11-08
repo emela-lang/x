@@ -14,14 +14,14 @@ error InvalidQuantity(given: Int, reason: String) derive Show
 
 fn quantity(n: Int) -> Quantity fails InvalidQuantity {
   Quantity(
-    value: Rule.check_or(n, QUANTITY, fn(rule) {
+    value: Rule.check_or(n, QUANTITY, |rule| {
       InvalidQuantity(given: n, reason: rule.message())
     }),
   )
 }
 
 fn even() -> Rule[Int] {
-  Rule.custom("an even number", fn(n) { n % 2 == 0 })
+  Rule.custom("an even number", |n| n % 2 == 0)
 }
 
 fn number(n: Int) -> Dynamic.Dynamic {
@@ -41,7 +41,7 @@ fn check_fails_with_the_first_broken_rule() {
 fn check_all_lists_every_broken_rule() {
   rules = [Rule.at_least(10), even()]
   assert Rule.check_all(12, rules) == 12
-  assert (Rule.check_all(3, rules) |> fn(_) { [] } escape { AllBroken(messages:) -> messages })
+  assert (Rule.check_all(3, rules) |> (|_| []) escape { AllBroken(messages:) -> messages })
     == ["at least 10", "an even number"]
 }
 
@@ -57,7 +57,7 @@ fn check_or_fails_with_an_error_of_your_own() {
 @test
 fn check_all_or_gets_every_broken_rule() {
   rules = [Rule.at_least(10), even()]
-  count = Rule.check_all_or(3, rules, fn(broken) {
+  count = Rule.check_all_or(3, rules, |broken| {
     Broken(message: "#{broken.length()} rules")
   }).to_string() escape {
     Broken(message:) -> message

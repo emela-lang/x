@@ -35,7 +35,7 @@ type Order(id: String, quantity: Quantity, tags: List[String], note: Option[Stri
 
 impl Order: Shaped {
   fn shape_in(proxy, visiting) {
-    Lib.visit("Order", visiting, fn(visiting) {
+    Lib.visit("Order", visiting, |visiting| {
       id: Option[String] = None
       quantity: Option[Quantity] = None
       tags: Option[List[String]] = None
@@ -61,7 +61,7 @@ enum Tree {
 
 impl Tree: Shaped {
   fn shape_in(proxy, visiting) {
-    Lib.visit("Tree", visiting, fn(visiting) {
+    Lib.visit("Tree", visiting, |visiting| {
       tree: Option[Tree] = None
       int: Option[Int] = None
       Variants(
@@ -95,7 +95,7 @@ type Member(name: String, team: Option[Team])
 
 impl Team: Shaped {
   fn shape_in(proxy, visiting) {
-    Lib.visit("Team", visiting, fn(visiting) {
+    Lib.visit("Team", visiting, |visiting| {
       name: Option[String] = None
       lead: Option[Member] = None
       Record(
@@ -111,7 +111,7 @@ impl Team: Shaped {
 
 impl Member: Shaped {
   fn shape_in(proxy, visiting) {
-    Lib.visit("Member", visiting, fn(visiting) {
+    Lib.visit("Member", visiting, |visiting| {
       name: Option[String] = None
       team: Option[Option[Team]] = None
       Record(
@@ -207,7 +207,7 @@ fn a_recursive_type_refers_to_itself_by_name() {
   Shaped.shape(p) match {
     Variants(name:, variants:) -> {
       assert name == "Tree"
-      assert variants.map(fn(v) { v.name }) == ["Leaf", "Pair", "Node"]
+      assert variants.map(|v| v.name) == ["Leaf", "Pair", "Node"]
     }
     _ -> assert False
   }
@@ -217,7 +217,7 @@ effect Orders {
   fn save(order: Order) -> ()
 }
 
-fn handle(order: Order) -> Int use Orders {
+fn handle(order: Order) -> Int uses { Orders } {
   (use Orders).save(order)
   1
 }
@@ -233,7 +233,7 @@ impl Page[A: Shaped]: Shaped {
   fn shape_in(proxy, visiting) {
     item: Option[A] = None
     name = Lib.generic_name("Page", [Shaped.shape_in(item, visiting)])
-    Lib.visit(name, visiting, fn(visiting) {
+    Lib.visit(name, visiting, |visiting| {
       items: Option[List[A]] = None
       next: Option[Option[String]] = None
       Record(

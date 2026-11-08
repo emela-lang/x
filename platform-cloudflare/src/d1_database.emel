@@ -33,10 +33,10 @@ suspend fn d1_execute(binding: String, statement: String) -> HostOutcome
 suspend fn d1_batch(binding: String, statements: String) -> HostOutcome
 
 @external(js, "./d1_database.mjs", "ok")
-fn outcome_ok(o: HostOutcome) -> Bool use {}
+fn outcome_ok(o: HostOutcome) -> Bool uses {}
 
 @external(js, "./d1_database.mjs", "value")
-fn outcome_value(o: HostOutcome) -> String use {}
+fn outcome_value(o: HostOutcome) -> String uses {}
 
 ## The D1 database bound as `binding` in wrangler.toml. A statement D1 refuses fails with its
 ## message as SqlError; a `binding` that names no D1 database is a defect.

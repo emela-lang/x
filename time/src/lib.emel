@@ -25,12 +25,12 @@ import Offset.{Offset}
 import OffsetDateTime.{OffsetDateTime}
 
 ## The current time from Clock, in `offset`.
-pub fn now(offset: Offset) -> OffsetDateTime use { Clock } {
+pub fn now(offset: Offset) -> OffsetDateTime uses { Clock } {
   OffsetDateTime.from_instant((use Clock).now(), offset)
 }
 
 ## The current date from Clock, in `offset`. In `+09:00` the date changes at 15:00 UTC.
-pub fn today(offset: Offset) -> Date use { Clock } {
+pub fn today(offset: Offset) -> Date uses { Clock } {
   now(offset).date()
 }
 
@@ -76,8 +76,8 @@ pub fn parse_duration(s: String) -> Duration fails ParseError {
   } else {
     (False, Some(s))
   }
-  body = rest.and_then(fn(r) { if r.starts_with("P") { after(r, "P") } else { None } })
-  ms = body.and_then(designators).map(fn(n) { if negative { 0 - n } else { n } })
+  body = rest.and_then(|r| if r.starts_with("P") { after(r, "P") } else { None })
+  ms = body.and_then(designators).map(|n| if negative { 0 - n } else { n })
   ms.map(Duration.milliseconds).or_fail(ParseError(input: s))
 }
 
@@ -98,7 +98,7 @@ fn days_part(s: String) -> Option[Int64] {
     Some(0)
   } else {
     s.split("D") match {
-      [n, ""] -> number(n).map(fn(n) { n * 86400000 })
+      [n, ""] -> number(n).map(|n| n * 86400000)
       _       -> None
     }
   }
@@ -130,7 +130,7 @@ fn time_part(s: String) -> Option[Int64] {
 fn unit(s: String, designator: String, ms: Int) -> (Option[Int64], String) {
   s.split(designator) match {
     [_]       -> (Some(0), s)
-    [n, rest] -> (number(n).map(fn(n) { n * Int64.from_int(ms) }), rest)
+    [n, rest] -> (number(n).map(|n| n * Int64.from_int(ms)), rest)
     _         -> (None, "")
   }
 }
@@ -139,7 +139,7 @@ fn unit(s: String, designator: String, ms: Int) -> (Option[Int64], String) {
 fn seconds(s: String) -> Option[Int64] {
   parts = if s.contains(".") { s.split(".") } else { s.split(",") }
   parts match {
-    [n] -> number(n).map(fn(n) { n * 1000 })
+    [n] -> number(n).map(|n| n * 1000)
     [n, f] -> (number(n), milliseconds(f)) match {
       (Some(n), Some(f)) -> Some(n * 1000 + Int64.from_int(f))
       _                  -> None
@@ -153,21 +153,21 @@ fn seconds(s: String) -> Option[Int64] {
 fn number(s: String) -> Option[Int64] {
   cps = s.code_points()
   n = cps.length()
-  if n == 0 || n > 10 || !cps.all(fn(c) { c >= 48 && c <= 57 }) {
+  if n == 0 || n > 10 || !cps.all(|c| c >= 48 && c <= 57) {
     None
   } else {
-    Some(cps.fold(from: 0, f: fn(acc, c) { acc * 10 + Int64.from_int(c - 48) }))
+    Some(cps.fold(from: 0, f: |acc, c| acc * 10 + Int64.from_int(c - 48)))
   }
 }
 
 # One or more digits of a fraction of a second, as milliseconds. Digits after the third are dropped.
 fn milliseconds(fraction: String) -> Option[Int] {
   cps = fraction.code_points()
-  if cps.is_empty() || !cps.all(fn(c) { c >= 48 && c <= 57 }) {
+  if cps.is_empty() || !cps.all(|c| c >= 48 && c <= 57) {
     None
   } else {
     first = cps.take(3).append([48, 48, 48]).take(3)
-    Some(first.fold(from: 0, f: fn(n, c) { n * 10 + c - 48 }))
+    Some(first.fold(from: 0, f: |n, c| n * 10 + c - 48))
   }
 }
 

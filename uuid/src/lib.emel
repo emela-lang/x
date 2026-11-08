@@ -27,7 +27,7 @@ pub fn nil() -> Uuid {
 }
 
 ## A version 4 UUID: 122 random bits from Random, with the version and the variant set.
-pub fn v4() -> Uuid use { Random } {
+pub fn v4() -> Uuid uses { Random } {
   r = use Random
   random = [r.int(), r.int(), r.int(), r.int()].flat_map(int_bytes)
   Uuid(bytes: stamp(random, 4))
@@ -37,7 +37,7 @@ pub fn v4() -> Uuid use { Random } {
 ## random bits from Random. A UUID made in a later millisecond sorts after one made earlier; two
 ## made in the same millisecond are in random order. A time before 1970 or after the year 10889
 ## does not fit in 48 bits, and only its low 48 bits are kept.
-pub fn v7() -> Uuid use { Clock, Random } {
+pub fn v7() -> Uuid uses { Clock, Random } {
   ms = (use Clock).now().to_unix_milliseconds()
   r = use Random
   random = [r.int(), r.int(), r.int()].flat_map(int_bytes)
@@ -63,7 +63,7 @@ pub fn parse(s: String) -> Uuid fails ParseError {
 
 ## The text form, with lowercase digits (`0190a5c8-5f3e-7b2d-9c4a-1e2f3a4b5c6d`).
 pub fn to_string(u: Uuid) -> String {
-  [(0, 4), (4, 6), (6, 8), (8, 10), (10, 16)].map(fn(range) {
+  [(0, 4), (4, 6), (6, 8), (8, 10), (10, 16)].map(|range| {
     (from, to) = range
     u.bytes.slice(from, to).to_hex()
   }).join("-")
@@ -88,7 +88,7 @@ pub fn version(u: Uuid) -> Int {
 ## The time a version 7 UUID was made at, to the millisecond. `None` for any other version.
 pub fn timestamp(u: Uuid) -> Option[Instant] {
   if u.version() == 7 {
-    ms = u.bytes.slice(0, 6).to_list().fold(from: Int64.from_int(0), f: fn(acc, b) {
+    ms = u.bytes.slice(0, 6).to_list().fold(from: Int64.from_int(0), f: |acc, b| {
       acc.shift_left(8).bit_or(Int64.from_int(b))
     })
     Some(Instant.from_unix_milliseconds(ms))
@@ -105,7 +105,7 @@ impl Uuid: Show {
 ## Sets the version in the high 4 bits of byte 6, and the RFC 9562 variant (`10`) in the high 2
 ## bits of byte 8. `bytes` has 16 elements from 0 to 255.
 fn stamp(bytes: List[Int], version: Int) -> Bytes {
-  stamped = bytes.enumerate().map(fn(entry) {
+  stamped = bytes.enumerate().map(|entry| {
     (i, b) = entry
     if i == 6 {
       b.bit_and(0x0F).bit_or(version.shift_left(4))
@@ -123,12 +123,12 @@ fn stamp(bytes: List[Int], version: Int) -> Bytes {
 
 ## The 4 bytes of `n`, most significant first.
 fn int_bytes(n: Int) -> List[Int] {
-  [24, 16, 8, 0].map(fn(by) { n.shift_right_unsigned(by).bit_and(0xFF) })
+  [24, 16, 8, 0].map(|by| n.shift_right_unsigned(by).bit_and(0xFF))
 }
 
 ## The low 48 bits of `ms` as 6 bytes, most significant first.
 fn time_bytes(ms: Int64) -> List[Int] {
-  [40, 32, 24, 16, 8, 0].map(fn(by) {
+  [40, 32, 24, 16, 8, 0].map(|by| {
     ms.shift_right_unsigned(by).bit_and(Int64.from_int(0xFF)).to_int()
   })
 }

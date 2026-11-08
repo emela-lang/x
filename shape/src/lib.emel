@@ -79,7 +79,7 @@ pub trait Shaped {
 ## }
 ## ```
 pub fn visit(name: String, visiting: List[String], build: fn(List[String]) -> Shape) -> Shape {
-  if visiting.any(fn(n) { n == name }) {
+  if visiting.any(|n| n == name) {
     Ref(name)
   } else {
     build([name, ..visiting])
@@ -139,7 +139,7 @@ pub fn of_value[A: Shaped](value: A) -> Shape {
 
 ## The shape of the parameter of `f`, without calling it. A router reads the type of the input
 ## of a handler this way.
-pub fn of_parameter[A: Shaped, B, E, R](f: fn(A) -> B fails E use R) -> Shape {
+pub fn of_parameter[A: Shaped, B, E, R](f: fn(A) -> B fails E uses { R }) -> Shape {
   proxy: Option[A] = None
   Shaped.shape(proxy)
 }
@@ -150,7 +150,7 @@ pub fn annotate(shape: Shape, name: String, value: Dynamic) -> Shape {
   shape match {
     Annotated(shape: inner, notes:) -> Annotated(
       shape: inner,
-      notes: notes.filter(fn((n, _)) { n != name }).append([(name, value)]),
+      notes: notes.filter(|(n, _)| n != name).append([(name, value)]),
     )
     _ -> Annotated(shape:, notes: [(name, value)])
   }
@@ -219,7 +219,7 @@ pub fn strip(shape: Shape) -> Shape {
 ## The value of the note `name` on `shape`, looking through names, or `None`.
 pub fn note(shape: Shape, name: String) -> Option[Dynamic] {
   shape match {
-    Annotated(shape: inner, notes:) -> notes.find(fn((n, _)) { n == name }) match {
+    Annotated(shape: inner, notes:) -> notes.find(|(n, _)| n == name) match {
       Some((_, value)) -> Some(value)
       None             -> note(inner, name)
     }
@@ -232,7 +232,7 @@ pub fn note(shape: Shape, name: String) -> Option[Dynamic] {
 ## Empty for any other shape.
 pub fn field_names(shape: Shape) -> List[String] {
   strip(shape) match {
-    Record(name: _, fields:) -> fields.map(fn(field) { field.name })
+    Record(name: _, fields:) -> fields.map(|field| field.name)
     _                        -> []
   }
 }

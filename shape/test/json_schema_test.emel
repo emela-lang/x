@@ -88,7 +88,7 @@ fn a_record_used_twice_is_defined_once() {
 
 @test
 fn generic_records_are_defined_by_their_full_names() {
-  page = fn(item: Shape) {
+  page = |item: Shape| {
     Record(
       name: Lib.generic_name("Page", [item]),
       fields: [Field(name: "items", shape: List(item))],

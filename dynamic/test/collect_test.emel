@@ -27,9 +27,9 @@ impl Body: Decode {
   }
 
   fn from_dynamic_all(d) {
-    title = Lib.attempt(fn() { d.field_all("title", Decode.from_dynamic_all) })
-    tags = Lib.attempt(fn() { d.field_all("tags", Decode.from_dynamic_all) })
-    due = Lib.attempt(fn() { d.field_all("due", Decode.from_dynamic_all) })
+    title = Lib.attempt(|| d.field_all("title", Decode.from_dynamic_all))
+    tags = Lib.attempt(|| d.field_all("tags", Decode.from_dynamic_all))
+    due = Lib.attempt(|| d.field_all("due", Decode.from_dynamic_all))
     (title, tags, due) match {
       (Decoded(title), Decoded(tags), Decoded(due)) -> Body(title:, tags:, due:)
       _ -> fail DecodeErrors(
@@ -49,8 +49,8 @@ impl Flag: Decode {
 }
 
 fn failures[A: Decode](d: Dynamic, proxy: Option[A]) -> List[(String, List[Segment])] {
-  read: fn() -> A fails DecodeErrors = fn() { Decode.from_dynamic_all(d) }
-  Lib.attempt(read).errors_of().map(fn(e) { (e.expected, e.path) })
+  read: fn() -> A fails DecodeErrors = || Decode.from_dynamic_all(d)
+  Lib.attempt(read).errors_of().map(|e| (e.expected, e.path))
 }
 
 @test
@@ -110,8 +110,8 @@ fn items_checks_the_number_of_elements() {
 @test
 fn index_all_adds_the_position() {
   read = Lib.index_all(1, Decode.from_dynamic_all)
-  r: fn() -> Int fails DecodeErrors = fn() { read(Items([Null, Text("x")])) }
-  paths = Lib.attempt(r).errors_of().map(fn(e) { e.path })
+  r: fn() -> Int fails DecodeErrors = || read(Items([Null, Text("x")]))
+  paths = Lib.attempt(r).errors_of().map(|e| e.path)
   assert paths == [[Index(1)]]
 }
 

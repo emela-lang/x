@@ -67,26 +67,26 @@ pub effect Transaction {
 ## The rows of `text` read as A.
 pub fn all[A: Decode](text: String, params: List[Dynamic]) -> List[A]
   fails SqlError | DecodeErrors
-  use { Sql } {
+  uses { Sql } {
   (use Sql).query(Statement(text:, params:)).map(Decode.from_dynamic_all)
 }
 
 ## The first row of `text` read as A, or `None` if it gives no rows.
 pub fn first[A: Decode](text: String, params: List[Dynamic]) -> Option[A]
   fails SqlError | DecodeErrors
-  use { Sql } {
+  uses { Sql } {
   (use Sql).query(Statement(text:, params:)).head().map(Decode.from_dynamic_all)
 }
 
 ## Runs `text`, and gives the number of rows it changed.
-pub fn execute(text: String, params: List[Dynamic]) -> Int fails SqlError use { Sql } {
+pub fn execute(text: String, params: List[Dynamic]) -> Int fails SqlError uses { Sql } {
   (use Sql).execute(Statement(text:, params:))
 }
 
 ## The parameters of `statement` as a handler gives them to the database: Items and Fields as
 ## JSON text, and the others (Binary among them) as they are.
 pub fn scalar_params(statement: Statement) -> List[Dynamic] {
-  statement.params.map(fn(p) {
+  statement.params.map(|p| {
     p match {
       Items(_)  -> Text(Json.to_string(p))
       Fields(_) -> Text(Json.to_string(p))
@@ -99,9 +99,9 @@ pub fn scalar_params(statement: Statement) -> List[Dynamic] {
 ## defect, which then goes on as it was. If the rollback itself fails, that SqlError is what goes
 ## on. An interruption is not seen here; the handler rolls back an open transaction when it is
 ## released. Transactions do not nest: what `begin` does inside another is up to the handler.
-pub fn transaction[A, E, R](body: fn() -> A fails E use { Sql, R }) -> A
+pub fn transaction[A, E, R](body: fn() -> A fails E uses { Sql, R }) -> A
   fails SqlError | E
-  use { Sql, Transaction, R } {
+  uses { Sql, Transaction, R } {
   tx = use Transaction
   tx.begin()
   Fiber.attempt(body) match {
@@ -149,7 +149,7 @@ pub handler TestSql: Sql {
     resume(run(statement).length())
   }
   suspend fn batch(statements, resume) {
-    resume(statements.map(fn(s) { run(s).length() }))
+    resume(statements.map(|s| run(s).length()))
   }
 }
 
@@ -174,9 +174,9 @@ pub handler TestTransaction: Transaction {
   }
 }
 
-fn run(statement: Statement) -> List[Dynamic] fails SqlError use { State[TestDatabase] } {
+fn run(statement: Statement) -> List[Dynamic] fails SqlError uses { State[TestDatabase] } {
   db = (use State[TestDatabase]).get()
-  n = db.sent.filter(fn(s) {
+  n = db.sent.filter(|s| {
     s match {
       Ran(_) -> True
       _      -> False
@@ -190,14 +190,14 @@ fn run(statement: Statement) -> List[Dynamic] fails SqlError use { State[TestDat
   }
 }
 
-fn record(sent: Sent) -> () use { State[TestDatabase] } {
-  (use State[TestDatabase]).update(fn(db) {
+fn record(sent: Sent) -> () uses { State[TestDatabase] } {
+  (use State[TestDatabase]).update(|db| {
     TestDatabase(sent: db.sent.append([sent]), ..db)
   })
 }
 
-fn is_open() -> Bool use { State[TestDatabase] } {
-  (use State[TestDatabase]).get().sent.fold(from: False, f: fn(open, s) {
+fn is_open() -> Bool uses { State[TestDatabase] } {
+  (use State[TestDatabase]).get().sent.fold(from: False, f: |open, s| {
     s match {
       Began      -> True
       Committed  -> False

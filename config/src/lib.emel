@@ -40,7 +40,7 @@ pub error ConfigError(problems: List[Problem])
 
 impl ConfigError: Show {
   fn show(self) {
-    self.problems.map(fn(p) { "#{p.variable}: #{p.message}" }).join("; ")
+    self.problems.map(|p| "#{p.variable}: #{p.message}").join("; ")
   }
 }
 
@@ -50,19 +50,19 @@ impl ConfigError: Show {
 ## an enum or a Map cannot be read from one variable: Decode finds text where it expects fields.
 ##
 ## Panics if `A` is not a record: that is a mistake in the program, not in the environment.
-pub fn load[A: Decode + Shaped](prefix: String) -> A fails ConfigError use { Env } {
+pub fn load[A: Decode + Shaped](prefix: String) -> A fails ConfigError uses { Env } {
   proxy: Option[A] = None
   shape = Shaped.shape(proxy)
   fields = record_fields(shape)
   env = use Env
-  values = fields.filter_map(fn(field) {
+  values = fields.filter_map(|field| {
     env.get(variable(prefix, field.name)) match {
       Some(text) if text != "" -> Some((field.name, from_text(field.shape, text)))
-      _                        -> unset(field.shape).map(fn(d) { (field.name, d) })
+      _                        -> unset(field.shape).map(|d| (field.name, d))
     }
   })
   Decode.from_dynamic_all(Dynamic.object(values)) escape {
-    DecodeErrors(errors:) -> fail ConfigError(problems: errors.map(fn(e) { problem(prefix, e) }))
+    DecodeErrors(errors:) -> fail ConfigError(problems: errors.map(|e| problem(prefix, e)))
   }
 }
 
@@ -73,7 +73,7 @@ pub fn variable(prefix: String, name: String) -> String {
 
 ## The variables of the record `shape`, in the order of its fields.
 pub fn variables(shape: Shape, prefix: String) -> List[String] {
-  record_fields(shape).map(fn(field) { variable(prefix, field.name) })
+  record_fields(shape).map(|field| variable(prefix, field.name))
 }
 
 ## A `.env.example` for the record `shape`: each variable with a comment saying its type and its
@@ -87,7 +87,7 @@ pub fn variables(shape: Shape, prefix: String) -> List[String] {
 ## # APP_LOG_LEVEL=
 ## ```
 pub fn example(shape: Shape, prefix: String) -> String {
-  record_fields(shape).map(fn(field) {
+  record_fields(shape).map(|field| {
     name = variable(prefix, field.name)
     (kind, line) = field.shape.strip() match {
       Shape.Option(inner) -> ("#{inner.name_of()} (optional)", "# #{name}=")
@@ -124,15 +124,15 @@ fn record_fields(shape: Shape) -> List[Field] {
 pub fn from_text(shape: Shape, text: String) -> Dynamic {
   shape.strip() match {
     Shape.Option(inner) -> from_text(inner, text)
-    Shape.List(item)    -> Items(text.split(",").map(fn(part) { from_text(item, part.trim()) }))
+    Shape.List(item)    -> Items(text.split(",").map(|part| from_text(item, part.trim())))
     Shape.Int           -> number(text)
     Shape.Int64         -> number(text)
     Shape.Float         -> number(text)
     Shape.Bool -> {
       word = text.trim().to_ascii_lowercase()
-      if ["true", "1", "yes", "on"].any(fn(w) { w == word }) {
+      if ["true", "1", "yes", "on"].any(|w| w == word) {
         Bool(True)
-      } else if ["false", "0", "no", "off"].any(fn(w) { w == word }) {
+      } else if ["false", "0", "no", "off"].any(|w| w == word) {
         Bool(False)
       } else {
         Text(text)
@@ -154,7 +154,7 @@ fn problem(prefix: String, e: DecodeError) -> Problem {
     [Key(name), ..rest] -> (name, rest)
     _                   -> ("", e.path)
   }
-  at = rest.map(fn(segment) {
+  at = rest.map(|segment| {
     segment match {
       Key(k)   -> ".#{k}"
       Index(i) -> "[#{i}]"

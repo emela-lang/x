@@ -103,7 +103,7 @@ fn parse_reads_what_to_string_writes() {
     date(-1, 12, 31),
     date(-271821, 4, 20),
   ]
-  assert for_each.map(fn(d) { parsed(d.to_string()) }) == for_each.map(Some)
+  assert for_each.map(|d| parsed(d.to_string())) == for_each.map(Some)
 }
 
 @test

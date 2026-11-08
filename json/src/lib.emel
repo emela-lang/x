@@ -187,10 +187,7 @@ fn hex4(rest: Rest) -> (Int, Rest) fails SyntaxError {
   if values.length() != 4 {
     fail SyntaxError(message: "expected 4 hexadecimal digits", offset: rest.offset)
   }
-  (
-    values.fold(0, fn(acc, d) { acc * 16 + d }),
-    Rest(chars: rest.chars.drop(4), offset: rest.offset + 4),
-  )
+  (values.fold(0, |acc, d| acc * 16 + d), Rest(chars: rest.chars.drop(4), offset: rest.offset + 4))
 }
 
 fn hex(c: String) -> Option[Int] {
@@ -208,7 +205,7 @@ fn hex(c: String) -> Option[Int] {
 
 # Takes the characters that can be part of a number, and leaves checking them to `Number.parse`.
 fn number(rest: Rest) -> (Dynamic, Rest) fails SyntaxError {
-  (lexeme, more) = span(rest.chars, fn(c) {
+  (lexeme, more) = span(rest.chars, |c| {
     is_digit(c) || c == "-" || c == "+" || c == "." || c == "e" || c == "E"
   })
   n = Number.parse(String.concat(lexeme)) escape {
@@ -232,5 +229,5 @@ fn is_digit(c: String) -> Bool {
 }
 
 fn code_point(c: String) -> Int {
-  c.code_points().fold(0, fn(_, p) { p })
+  c.code_points().fold(0, |_, p| p)
 }

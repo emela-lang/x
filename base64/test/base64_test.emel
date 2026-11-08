@@ -41,12 +41,12 @@ const VECTORS: List[(String, String)] = [
 
 @test
 fn encode_writes_the_test_vectors_of_rfc_4648() {
-  assert VECTORS.map(fn((plain, _)) { Lib.encode(text(plain)) }) == VECTORS.map(fn((_, e)) { e })
+  assert VECTORS.map(|(plain, _)| Lib.encode(text(plain))) == VECTORS.map(|(_, e)| e)
 }
 
 @test
 fn decode_reads_the_test_vectors_of_rfc_4648() {
-  assert VECTORS.map(fn((_, e)) { Lib.decode(e) }) == VECTORS.map(fn((plain, _)) { text(plain) })
+  assert VECTORS.map(|(_, e)| Lib.decode(e)) == VECTORS.map(|(plain, _)| text(plain))
 }
 
 @test
@@ -81,11 +81,11 @@ fn every_byte_goes_and_comes_back() {
 @test
 fn every_length_up_to_5_goes_and_comes_back() {
   all = every_byte()
-  pieces = List.range(0, 6).flat_map(fn(n) {
-    List.range(0, 256 - n + 1).map(fn(from) { all.slice(from, from + n) })
+  pieces = List.range(0, 6).flat_map(|n| {
+    List.range(0, 256 - n + 1).map(|from| all.slice(from, from + n))
   })
-  assert pieces.all(fn(b) { Lib.decode(Lib.encode(b)) == b })
-  assert pieces.all(fn(b) { Lib.decode_url(Lib.encode_url(b)) == b })
+  assert pieces.all(|b| Lib.decode(Lib.encode(b)) == b)
+  assert pieces.all(|b| Lib.decode_url(Lib.encode_url(b)) == b)
 }
 
 @test

@@ -43,11 +43,11 @@ pub handler TestKv: Kv {
     resume((use State[Map[String, String]]).get().get(key))
   }
   suspend fn put(key, value, resume) {
-    (use State[Map[String, String]]).update(fn(m) { m.insert(key, value) })
+    (use State[Map[String, String]]).update(|m| m.insert(key, value))
     resume(())
   }
   suspend fn delete(key, resume) {
-    (use State[Map[String, String]]).update(fn(m) { m.remove(key) })
+    (use State[Map[String, String]]).update(|m| m.remove(key))
     resume(())
   }
 }
