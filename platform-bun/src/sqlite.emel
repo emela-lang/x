@@ -37,25 +37,25 @@ type Connection
 type HostOutcome
 
 @external(js, "./sqlite.mjs", "open")
-fn sqlite_open(path: String) -> Connection use {}
+fn sqlite_open(path: String) -> Connection uses {}
 
 @external(js, "./sqlite.mjs", "close")
-fn sqlite_close(db: Connection) -> () use {}
+fn sqlite_close(db: Connection) -> () uses {}
 
 @external(js, "./sqlite.mjs", "query")
-fn sqlite_query(db: Connection, statement: String) -> HostOutcome use {}
+fn sqlite_query(db: Connection, statement: String) -> HostOutcome uses {}
 
 @external(js, "./sqlite.mjs", "execute")
-fn sqlite_execute(db: Connection, statement: String) -> HostOutcome use {}
+fn sqlite_execute(db: Connection, statement: String) -> HostOutcome uses {}
 
 @external(js, "./sqlite.mjs", "batch")
-fn sqlite_batch(db: Connection, statements: String) -> HostOutcome use {}
+fn sqlite_batch(db: Connection, statements: String) -> HostOutcome uses {}
 
 @external(js, "./sqlite.mjs", "ok")
-fn outcome_ok(o: HostOutcome) -> Bool use {}
+fn outcome_ok(o: HostOutcome) -> Bool uses {}
 
 @external(js, "./sqlite.mjs", "result")
-fn outcome_result(o: HostOutcome) -> String use {}
+fn outcome_result(o: HostOutcome) -> String uses {}
 
 ## The database in the file `path` (created if it does not exist), or a new one in memory for
 ## `:memory:`. The connection is opened by the `with` and closed when it ends; an open transaction
@@ -102,7 +102,7 @@ pub handler BunSqliteTransaction: Transaction {
   }
 }
 
-fn run(text: String) -> () fails SqlError use { Sql } {
+fn run(text: String) -> () fails SqlError uses { Sql } {
   (use Sql).execute(Statement(text:, params: []))
   ()
 }

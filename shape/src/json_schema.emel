@@ -72,13 +72,13 @@ fn schema(shape: Shape, defs: List[(String, Dynamic)]) -> (Dynamic, List[(String
       (values, defs) = schema(value, defs)
       (Dynamic.object([("type", Text("object")), ("additionalProperties", values)]), defs)
     }
-    Record(name:, fields:)     -> define(name, defs, fn(defs) { object_of(fields, defs) })
-    Variants(name:, variants:) -> define(name, defs, fn(defs) {
+    Record(name:, fields:)     -> define(name, defs, |defs| object_of(fields, defs))
+    Variants(name:, variants:) -> define(name, defs, |defs| {
       (cases, defs) = all(variants, defs, variant)
       (Dynamic.object([("oneOf", Items(cases))]), defs)
     })
     Ref(name)                  -> (reference(name), defs)
-    Named(name:, shape: inner) -> define(name, defs, fn(defs) { schema(inner, defs) })
+    Named(name:, shape: inner) -> define(name, defs, |defs| schema(inner, defs))
     Annotated(shape: inner, notes:) -> {
       (s, defs) = schema(inner, defs)
       (with_pairs(s, notes.map(keyword)), defs)
@@ -92,12 +92,12 @@ fn define(
   defs: List[(String, Dynamic)],
   build: fn(List[(String, Dynamic)]) -> (Dynamic, List[(String, Dynamic)]),
 ) -> (Dynamic, List[(String, Dynamic)]) {
-  if defs.any(fn((n, _)) { n == name }) {
+  if defs.any(|(n, _)| n == name) {
     (reference(name), defs)
   } else {
     # The name goes in first, so a `Ref` to it inside does not build it again.
     (body, built) = build(defs.append([(name, Dynamic.object([]))]))
-    (reference(name), built.map(fn((n, s)) { if n == name { (n, body) } else { (n, s) } }))
+    (reference(name), built.map(|(n, s)| if n == name { (n, body) } else { (n, s) }))
   }
 }
 
@@ -106,11 +106,11 @@ fn object_of(
   fields: List[Field],
   defs: List[(String, Dynamic)],
 ) -> (Dynamic, List[(String, Dynamic)]) {
-  (properties, defs) = all(fields, defs, fn(field, defs) {
+  (properties, defs) = all(fields, defs, |field, defs| {
     (s, defs) = schema(field.shape, defs)
     ((field.name, s), defs)
   })
-  required = fields.filter(fn(field) { !optional(field.shape) }).map(fn(field) { Text(field.name) })
+  required = fields.filter(|field| !optional(field.shape)).map(|field| Text(field.name))
   pairs = [("type", Text("object")), ("properties", Dynamic.object(properties))]
   (Dynamic.object(pairs.append([("required", Items(required))])), defs)
 }
@@ -153,7 +153,7 @@ fn all[A, B](
   defs: List[(String, Dynamic)],
   f: fn(A, List[(String, Dynamic)]) -> (B, List[(String, Dynamic)]),
 ) -> (List[B], List[(String, Dynamic)]) {
-  (reversed, defs) = xs.fold(from: ([], defs), f: fn((acc, defs), x) {
+  (reversed, defs) = xs.fold(from: ([], defs), f: |(acc, defs), x| {
     (y, defs) = f(x, defs)
     ([y, ..acc], defs)
   })
@@ -194,7 +194,7 @@ fn reference(name: String) -> Dynamic {
 }
 
 fn pointer_token(name: String) -> String {
-  name.chars().map(fn(c) {
+  name.chars().map(|c| {
     c match {
       "~" -> "~0"
       "/" -> "~1"
@@ -207,10 +207,12 @@ fn pointer_token(name: String) -> String {
 ## and digits and `-._~!$&'()*+,;=:@/?` (RFC 3986). Names in Emela are ASCII.
 fn fragment_char(c: String) -> Bool {
   c.code_points() match {
-    [p] -> (p >= 0x30 && p <= 0x39)
-      || (p >= 0x41 && p <= 0x5A)
-      || (p >= 0x61 && p <= 0x7A)
-      || "-._~!$&'()*+,;=:@/?".contains(c)
+    [p] -> (
+      (p >= 0x30 && p <= 0x39)
+        || (p >= 0x41 && p <= 0x5A)
+        || (p >= 0x61 && p <= 0x7A)
+        || "-._~!$&'()*+,;=:@/?".contains(c)
+    )
     _ -> False
   }
 }
@@ -219,14 +221,14 @@ fn fragment_char(c: String) -> Bool {
 fn percent(c: String) -> String {
   digits = "0123456789ABCDEF"
   p = c.code_points().head().or(0)
-  hex = fn(n) { digits.chars().get(n).or("0") }
+  hex = |n| digits.chars().get(n).or("0")
   "%#{hex(p / 16)}#{hex(p % 16)}"
 }
 
 ## `schema` (an object) with `pairs` added; a key already there is replaced.
 fn with_pairs(schema: Dynamic, pairs: List[(String, Dynamic)]) -> Dynamic {
   schema match {
-    Fields(m) -> Fields(pairs.fold(from: m, f: fn(acc, (k, v)) { acc.insert(k, v) }))
+    Fields(m) -> Fields(pairs.fold(from: m, f: |acc, (k, v)| acc.insert(k, v)))
     _         -> schema
   }
 }

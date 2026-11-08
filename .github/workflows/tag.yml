@@ -39,5 +39,5 @@ jobs:
             echo "::notice::$tag"
           done
           if [ ${#new[@]} -gt 0 ]; then
-            git push origin "${new[@]}"
+            git push --atomic origin "${new[@]}"
           fi

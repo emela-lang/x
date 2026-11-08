@@ -114,7 +114,7 @@ impl OffsetDateTime: Show {
 # and the offset fails to parse.
 fn split_offset(s: String) -> Option[(String, String)] {
   cps = s.code_points()
-  cps.reverse().find_index(fn(c) { c == 43 || c == 45 || c == 90 || c == 122 }).map(fn(i) {
+  cps.reverse().find_index(|c| c == 43 || c == 45 || c == 90 || c == 122).map(|i| {
     at = cps.length() - 1 - i
     (text(cps.take(at)), text(cps.drop(at)))
   })

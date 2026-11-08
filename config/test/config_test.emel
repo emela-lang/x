@@ -16,7 +16,7 @@ type AppConfig(
 # What `derive Shaped` is meant to generate.
 impl AppConfig: Shaped {
   fn shape_in(proxy, visiting) {
-    Shape.visit("AppConfig", visiting, fn(visiting) {
+    Shape.visit("AppConfig", visiting, |visiting| {
       int: Option[Int] = None
       bool: Option[Bool] = None
       secret: Option[Redacted[String]] = None
@@ -52,13 +52,13 @@ impl AppConfig: Decode {
   }
 
   fn from_dynamic_all(d) {
-    port = Dynamic.attempt(fn() { d.field_all("port", Decode.from_dynamic_all) })
-    debug = Dynamic.attempt(fn() { d.field_all("debug", Decode.from_dynamic_all) })
-    database_url = Dynamic.attempt(fn() {
+    port = Dynamic.attempt(|| d.field_all("port", Decode.from_dynamic_all))
+    debug = Dynamic.attempt(|| d.field_all("debug", Decode.from_dynamic_all))
+    database_url = Dynamic.attempt(|| {
       d.field_all("database_url", Decode.from_dynamic_all)
     })
-    log_level = Dynamic.attempt(fn() { d.field_all("log_level", Decode.from_dynamic_all) })
-    origins = Dynamic.attempt(fn() { d.field_all("origins", Decode.from_dynamic_all) })
+    log_level = Dynamic.attempt(|| d.field_all("log_level", Decode.from_dynamic_all))
+    origins = Dynamic.attempt(|| d.field_all("origins", Decode.from_dynamic_all))
     (port, debug, database_url, log_level, origins) match {
       (
         Decoded(port),
@@ -138,7 +138,7 @@ fn an_empty_value_counts_as_unset() {
 
 @test
 fn bool_takes_the_usual_words() {
-  debug = fn(text) {
+  debug = |text| {
     config = load(GOOD.append([("APP_DEBUG", text)])) escape {
       ConfigError(..) -> panic("failed on #{text}")
     }
@@ -169,7 +169,7 @@ fn text_turns_into_the_kind_of_its_field() {
 
 @test
 fn the_message_never_holds_a_value() {
-  message = problems([("APP_PORT", "hunter2"), ..GOOD.drop(1)]).map(fn(p) { p.message }).join("; ")
+  message = problems([("APP_PORT", "hunter2"), ..GOOD.drop(1)]).map(|p| p.message).join("; ")
   assert message == "expected number, found text"
   shown = ConfigError(problems: problems([("APP_PORT", "hunter2")])).show()
   assert shown

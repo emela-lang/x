@@ -37,7 +37,7 @@ fn every_failure_of_from_dynamic_all_is_hidden() {
   } escape {
     DecodeErrors(errors:) -> errors
   }
-  assert found.map(fn(e) { e.actual }) == [Text("<redacted>"), Text("<redacted>")]
+  assert found.map(|e| e.actual) == [Text("<redacted>"), Text("<redacted>")]
 }
 
 @test

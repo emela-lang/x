@@ -15,16 +15,16 @@ import Sqlite.{BunSqlite}
 @entry(Http.serve)
 pub fn app(request: Request) -> Response {
   with Platform, BunSqlite(path: "notes.db") {
-    answer(fn() { route(request) })
+    answer(|| route(request))
   }
 }
 
-fn route(request: Request) -> Response fails SqlError | DecodeErrors use { Sql } {
+fn route(request: Request) -> Response fails SqlError | DecodeErrors uses { Sql } {
   Sql.execute("create table if not exists notes (id integer primary key, body text not null)", [])
   (request.method, request.segments()) match {
     (Get, ["notes"]) -> {
       found: List[Note] = Sql.all("select body from notes order by id", [])
-      Response.new(200, found.map(fn(n) { "#{n.body}\n" }).join(""))
+      Response.new(200, found.map(|n| "#{n.body}\n").join(""))
     }
     (Post, ["notes"]) -> {
       Sql.execute("insert into notes (body) values (?)", [Text(request.body)])
@@ -43,7 +43,8 @@ impl Note: Decode {
   }
 }
 
-fn answer(run: fn() -> Response fails SqlError | DecodeErrors use { Sql }) -> Response use { Sql } {
+fn answer(run: fn() -> Response fails SqlError | DecodeErrors uses { Sql }) -> Response
+  uses { Sql } {
   run() escape {
     SqlError(message:) -> Response.new(500, "database: #{message}\n")
     DecodeErrors(..)   -> Response.new(500, "a row could not be read\n")

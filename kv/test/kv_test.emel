@@ -2,7 +2,7 @@ import Std.Map.{Map}
 import Std.State.{State}
 import Lib.{Kv, TestKv}
 
-fn remember(name: String) -> Bool use { Kv } {
+fn remember(name: String) -> Bool uses { Kv } {
   kv = use Kv
   seen = kv.get(name) != None
   kv.put(name, "seen")
@@ -11,7 +11,7 @@ fn remember(name: String) -> Bool use { Kv } {
 
 @test
 fn get_returns_what_put_set() {
-  (value, store) = State.run(Map.empty(), fn() {
+  (value, store) = State.run(Map.empty(), || {
     with TestKv {
       kv = use Kv
       kv.put("a", "1")
@@ -25,13 +25,13 @@ fn get_returns_what_put_set() {
 
 @test
 fn a_key_never_put_is_none() {
-  (value, _) = State.run(Map.empty(), fn() { with TestKv { (use Kv).get("a") } })
+  (value, _) = State.run(Map.empty(), || with TestKv { (use Kv).get("a") })
   assert value == None
 }
 
 @test
 fn delete_unsets_the_key() {
-  (value, store) = State.run(Map.from_list([("a", "1"), ("b", "2")]), fn() {
+  (value, store) = State.run(Map.from_list([("a", "1"), ("b", "2")]), || {
     with TestKv {
       kv = use Kv
       kv.delete("a")
@@ -45,7 +45,7 @@ fn delete_unsets_the_key() {
 
 @test
 fn the_store_starts_from_the_state() {
-  (first, _) = State.run(Map.empty(), fn() { with TestKv { remember("a") } })
-  (again, _) = State.run(Map.from_list([("a", "seen")]), fn() { with TestKv { remember("a") } })
+  (first, _) = State.run(Map.empty(), || with TestKv { remember("a") })
+  (again, _) = State.run(Map.from_list([("a", "seen")]), || with TestKv { remember("a") })
   assert (first, again) == (False, True)
 }

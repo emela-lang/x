@@ -76,7 +76,7 @@ fn a_line_that_does_not_read_tells_its_number_but_not_its_text() {
 const FILES: TestFiles = TestFiles(files: [(".env", "A=from file\nB=from file\n")], directories: [])
 
 fn get_all(env: List[(String, String)], files: TestFiles) -> List[Option[String]] {
-  (values, _) = State.run(files, fn() {
+  (values, _) = State.run(files, || {
     with TestEnv(vars: env) {
       with TestFileSystem, DotEnv(path: ".env") {
         e = use Env

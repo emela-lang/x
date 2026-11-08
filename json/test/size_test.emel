@@ -3,7 +3,7 @@ import Lib
 
 @test
 fn reads_a_long_array() {
-  s = "[#{List.range(0, 100000).map(fn(_) { "1" }).join(",")}]"
+  s = "[#{List.range(0, 100000).map(|_| "1").join(",")}]"
   Lib.parse(s) match {
     Items(xs) -> assert xs.length() == 100000
     _         -> assert False
@@ -12,13 +12,13 @@ fn reads_a_long_array() {
 
 @test
 fn reads_a_long_string() {
-  s = List.range(0, 100000).map(fn(_) { "a" }).join("")
+  s = List.range(0, 100000).map(|_| "a").join("")
   assert Lib.parse("\"#{s}\"") == Text(s)
 }
 
 @test
 fn reads_deep_nesting() {
-  open = List.range(0, 1000).map(fn(_) { "[" }).join("")
-  close = List.range(0, 1000).map(fn(_) { "]" }).join("")
+  open = List.range(0, 1000).map(|_| "[").join("")
+  close = List.range(0, 1000).map(|_| "]").join("")
   Lib.parse("#{open}#{close}")
 }

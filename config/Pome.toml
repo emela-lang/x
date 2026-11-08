@@ -1,11 +1,16 @@
 [pome]
 name = "github.com/emela-lang/x/config"
-version = "0.1.1"
-emela = "0.26.0"
+version = "0.2.0"
+emela = "0.27.0"
 
 [dependencies]
-"github.com/emela-lang/x/dynamic" = "v0.4.0"
-"github.com/emela-lang/x/shape" = "v0.3.0"
+"github.com/emela-lang/x/dynamic" = "v0.5.1"
+"github.com/emela-lang/x/shape" = "v0.4.0"
 
 [dev-dependencies]
-"github.com/emela-lang/x/redacted" = "v0.3.0"
+"github.com/emela-lang/x/redacted" = "v0.5.0"
+
+[replace]
+"github.com/emela-lang/x/dynamic" = { path = "../dynamic" }
+"github.com/emela-lang/x/shape" = { path = "../shape" }
+"github.com/emela-lang/x/redacted" = { path = "../redacted" }

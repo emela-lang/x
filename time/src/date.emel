@@ -119,7 +119,7 @@ pub fn parse(s: String) -> Date fails ParseError {
   parts = s.split("-")
   found = parts match {
     [y, m, day] -> (if y.starts_with("+") { expanded_year(y, "+") } else { digits(y, 4) }, m, day)
-    ["", y, m, day] -> (expanded_year(y, "").map(fn(n) { 0 - n }), m, day)
+    ["", y, m, day] -> (expanded_year(y, "").map(|n| 0 - n), m, day)
     _           -> (None, "", "")
   }
   date = found match {
@@ -209,10 +209,10 @@ fn year_to_string(year: Int) -> String {
 ## The value of `s` if it is exactly `width` ASCII digits.
 fn digits(s: String, width: Int) -> Option[Int] {
   cps = s.code_points()
-  if cps.length() != width || !cps.all(fn(c) { c >= 48 && c <= 57 }) {
+  if cps.length() != width || !cps.all(|c| c >= 48 && c <= 57) {
     None
   } else {
-    Some(cps.fold(from: 0, f: fn(n, c) { n * 10 + c - 48 }))
+    Some(cps.fold(from: 0, f: |n, c| n * 10 + c - 48))
   }
 }
 

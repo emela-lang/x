@@ -70,7 +70,7 @@ fn groups(xs: List[Int], alphabet: Alphabet, padded: Bool, written: List[String]
 }
 
 fn characters(alphabet: Alphabet, values: List[Int]) -> String {
-  values.map(fn(v) { alphabet.character(v) }).join("")
+  values.map(|v| alphabet.character(v)).join("")
 }
 
 # The character of the 6-bit value `n`.

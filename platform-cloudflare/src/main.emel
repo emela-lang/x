@@ -24,7 +24,7 @@ pub fn app(request: Request) -> Response {
   with CloudflarePlatform { route(request) }
 }
 
-fn route(request: Request) -> Response use { Console, Env, Kv, Sql } {
+fn route(request: Request) -> Response uses { Console, Env, Kv, Sql } {
   (use Console).print_line("#{request.method} #{request.url}")
   (request.method, request.segments()) match {
     (Get, []) -> {
@@ -35,8 +35,8 @@ fn route(request: Request) -> Response use { Console, Env, Kv, Sql } {
       Response.new(200, "#{greeting} from Emela (visit ##{count + 1})\n")
     }
     (Get, ["hello", who]) -> Response.new(200, "hello, #{who}\n")
-    (Get, ["notes"])      -> answer(fn() { notes() })
-    (Post, ["notes"])     -> answer(fn() { add_note(request.body) })
+    (Get, ["notes"])      -> answer(|| notes())
+    (Post, ["notes"])     -> answer(|| add_note(request.body))
     (Get, ["boom"])       -> panic("boom")
     _                     -> Response.new(404, "not found\n")
   }
@@ -55,17 +55,18 @@ impl Note: Decode {
   }
 }
 
-fn notes() -> Response fails SqlError | DecodeErrors use { Sql } {
+fn notes() -> Response fails SqlError | DecodeErrors uses { Sql } {
   found: List[Note] = Sql.all("select body from notes order by id", [])
-  Response.new(200, found.map(fn(n) { "#{n.body}\n" }).join(""))
+  Response.new(200, found.map(|n| "#{n.body}\n").join(""))
 }
 
-fn add_note(body: String) -> Response fails SqlError use { Sql } {
+fn add_note(body: String) -> Response fails SqlError uses { Sql } {
   Sql.execute("insert into notes (body) values (?)", [Text(body)])
   Response.new(201, "added\n")
 }
 
-fn answer(run: fn() -> Response fails SqlError | DecodeErrors use { Sql }) -> Response use { Sql } {
+fn answer(run: fn() -> Response fails SqlError | DecodeErrors uses { Sql }) -> Response
+  uses { Sql } {
   run() escape {
     SqlError(message:) -> Response.new(500, "database: #{message}\n")
     DecodeErrors(..)   -> Response.new(500, "a row could not be read\n")

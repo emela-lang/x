@@ -1,6 +1,6 @@
 import Std.Bytes.{Bytes}
 import Std.Clock.{TestClock}
-import Std.Fiber.{Success, Failure}
+import Std.Exit.{Success, Failure}
 import Std.Instant.{Instant}
 import Std.Random.{Random}
 import Std.State.{State}
@@ -27,20 +27,20 @@ fn at(ms: Int) -> Instant {
 }
 
 fn v4_from(ints: List[Int]) -> Uuid {
-  (u, _) = State.run(ints, fn() { with FixedRandom { Lib.v4() } })
+  (u, _) = State.run(ints, || with FixedRandom { Lib.v4() })
   u
 }
 
 fn v7_from(ms: Int, ints: List[Int]) -> Uuid {
-  (u, _) = State.run(at(ms), fn() {
-    (u, _) = State.run(ints, fn() { with FixedRandom, TestClock { Lib.v7() } })
+  (u, _) = State.run(at(ms), || {
+    (u, _) = State.run(ints, || with FixedRandom, TestClock { Lib.v7() })
     u
   })
   u
 }
 
 fn parsed(s: String) -> Option[Uuid] {
-  Fiber.attempt(fn() { Lib.parse(s) }) match {
+  Exit.attempt(|| Lib.parse(s)) match {
     Success(u) -> Some(u)
     Failure(_) -> None
   }

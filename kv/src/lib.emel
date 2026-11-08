@@ -5,7 +5,7 @@
 # ```emela
 # import Kv.{Kv}
 #
-# fn remember(name: String) -> Bool use { Kv } {
+# fn remember(name: String) -> Bool uses { Kv } {
 #   kv = use Kv
 #   seen = kv.get(name) != None
 #   kv.put(name, "seen")
@@ -34,7 +34,7 @@ pub effect Kv {
 ## with the entries to start from:
 ##
 ## ```emela
-## (seen, store) = State.run(Map.empty(), fn() { with TestKv { remember("a") } })
+## (seen, store) = State.run(Map.empty(), || with TestKv { remember("a") })
 ## ```
 ##
 ## Every operation takes effect at once and never suspends.
@@ -43,11 +43,11 @@ pub handler TestKv: Kv {
     resume((use State[Map[String, String]]).get().get(key))
   }
   suspend fn put(key, value, resume) {
-    (use State[Map[String, String]]).update(fn(m) { m.insert(key, value) })
+    (use State[Map[String, String]]).update(|m| m.insert(key, value))
     resume(())
   }
   suspend fn delete(key, resume) {
-    (use State[Map[String, String]]).update(fn(m) { m.remove(key) })
+    (use State[Map[String, String]]).update(|m| m.remove(key))
     resume(())
   }
 }

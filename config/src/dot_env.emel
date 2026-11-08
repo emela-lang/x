@@ -50,7 +50,7 @@ pub handler DotEnv(vars: Map[String, String]): Env {
 ## The pairs of `text`, the contents of a `.env` file, in the order they are written. `path` is
 ## only for the error.
 pub fn parse(path: String, text: String) -> List[(String, String)] fails DotEnvError {
-  text.split("\n").enumerate().filter_map(fn((i, raw)) {
+  text.split("\n").enumerate().filter_map(|(i, raw)| {
     line(raw) escape {
       Invalid(reason:) -> fail DotEnvError(path:, line: i + 1, reason:)
     }
@@ -98,7 +98,7 @@ fn is_name(name: String) -> Bool {
   name.chars() match {
     [] -> False
     [first, ..rest] -> !is_digit(first)
-      && [first, ..rest].all(fn(c) { is_digit(c) || is_letter(c) || c == "_" })
+      && [first, ..rest].all(|c| is_digit(c) || is_letter(c) || c == "_")
   }
 }
 

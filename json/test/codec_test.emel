@@ -6,7 +6,7 @@ type User(name: String, tags: List[String])
 
 impl User: Encode {
   fn to_dynamic(self) {
-    Dynamic.object([("name", Text(self.name)), ("tags", Items(self.tags.map(fn(t) { Text(t) })))])
+    Dynamic.object([("name", Text(self.name)), ("tags", Items(self.tags.map(|t| Text(t))))])
   }
 }
 

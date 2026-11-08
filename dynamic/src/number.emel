@@ -96,7 +96,7 @@ pub fn to_int64(n: Number) -> Int64 fails OutOfRange {
   }
 
   # Accumulates downwards so that the minimum value, which has no positive counterpart, fits.
-  below = s.code_points().fold(0, fn(acc: Int64, c) {
+  below = s.code_points().fold(0, |acc: Int64, c| {
     acc * 10 - Int64.from_int(c - 48)
   })
   if n.negative { below } else { -below }
@@ -132,7 +132,7 @@ pub fn to_string(n: Number) -> String {
 }
 
 fn zeros(count: Int) -> String {
-  List.range(0, count).map(fn(_) { "0" }).join("")
+  List.range(0, count).map(|_| "0").join("")
 }
 
 # Reads what `Int.to_string`, `Int64.to_string` and `Float.to_string` write, which is always in
@@ -162,7 +162,7 @@ fn normalize(negative: Bool, digits: List[String], exponent: Int) -> Option[Numb
   kept = significant.take(significant.length() - trailing)
   kept match {
     [] -> Some(Number(negative: False, digits: "0", exponent: 0))
-    _ -> exponent.checked_add(trailing).map(fn(e) {
+    _ -> exponent.checked_add(trailing).map(|e| {
       Number(negative:, digits: String.concat(kept), exponent: e)
     })
   }

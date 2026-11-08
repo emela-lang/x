@@ -37,16 +37,16 @@ fn from_instant_shows_the_local_time() {
 fn instants_go_there_and_back() {
   offsets = [0, 540, -330, 1439, -1439].filter_map(Offset.from_minutes)
   instants = [ms(0), ms(-1), ms(1761696000123), Instant.from_unix_milliseconds(-62167219200 * 1000)]
-  back = instants.flat_map(fn(t) {
-    offsets.map(fn(o) { OffsetDateTime.from_instant(t, o).to_instant() == t })
+  back = instants.flat_map(|t| {
+    offsets.map(|o| OffsetDateTime.from_instant(t, o).to_instant() == t)
   })
-  assert back.all(fn(b) { b })
+  assert back.all(|b| b)
 }
 
 @test
 fn in_utc_to_string_is_what_instant_writes() {
   instants = [ms(0), ms(-1), ms(1761696000123), Instant.from_unix_milliseconds(253402300800 * 1000)]
-  assert instants.all(fn(t) {
+  assert instants.all(|t| {
     OffsetDateTime.from_instant(t, Offset.utc()).to_string() == t.to_string()
   })
 }
@@ -57,8 +57,7 @@ fn unix_milliseconds_round_trip_for_uuid_v7() {
   made = Instant.from_unix_milliseconds(1761696000123)
   text = OffsetDateTime.from_instant(made, Offset.utc()).to_string()
   assert text == "2025-10-29T00:00:00.123Z"
-  assert parsed(text).map(fn(odt) { odt.to_instant().to_unix_milliseconds() })
-    == Some(1761696000123)
+  assert parsed(text).map(|odt| odt.to_instant().to_unix_milliseconds()) == Some(1761696000123)
 }
 
 @test
