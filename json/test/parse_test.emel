@@ -81,3 +81,11 @@ fn reports_where_it_fails() {
   assert failure("[1.]") == ("invalid number", 1)
   assert failure("\"あ\" x") == ("expected the end of input", 4)
 }
+
+@test
+fn reads_by_code_point() {
+  assert Lib.parse("[1,\r\n2]\r\n") == Items([number(1), number(2)])
+  assert Lib.parse("\"e\u{301}\"") == Text("e\u{301}")
+  assert failure("\"e\u{301}\" x") == ("expected the end of input", 5)
+  assert failure("[1,\r\nx]") == ("expected a value", 5)
+}
