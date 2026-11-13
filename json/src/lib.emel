@@ -9,7 +9,10 @@ pub error SyntaxError(message: String, offset: Int)
 ## Reads one JSON value, with whitespace allowed around it. For a repeated key in an object,
 ## the later value is kept.
 pub fn parse(s: String) -> Dynamic fails SyntaxError {
-  (value, rest) = element(s.chars(), 0)
+  # By code point: `String.chars` gives grapheme clusters, which join `\r\n` and a combining
+  # character with the one before it.
+  chars = s.code_points().filter_map(String.from_code_point)
+  (value, rest) = element(chars, 0)
   rest match {
     Rest([], _)     -> value
     Rest(_, offset) -> fail SyntaxError(message: "expected the end of input", offset:)
