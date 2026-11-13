@@ -1,0 +1,297 @@
+import Std.Map
+import Dynamic.{Dynamic, Null, Bool, Text, Items, Fields}
+import Dynamic.Number
+import Lib.{SyntaxError}
+
+fn number(n: Int) -> Dynamic {
+  Dynamic.Number(Number.from_int(n))
+}
+
+fn decimal(s: String) -> Dynamic fails ParseError {
+  Dynamic.Number(Number.parse(s))
+}
+
+fn table(pairs: List[(String, Dynamic)]) -> Dynamic {
+  Fields(Map.from_list(pairs))
+}
+
+# The value of `a` in `text`.
+fn a(text: String) -> Dynamic fails SyntaxError {
+  Lib.parse("a = #{text}") match {
+    Fields(m) -> m.get("a").or(Null)
+    _         -> Null
+  }
+}
+
+fn failure(s: String) -> (String, Int) {
+  {
+    Lib.parse(s)
+    ("", -1)
+  } escape {
+    SyntaxError(message:, offset:) -> (message, offset)
+  }
+}
+
+@test
+fn reads_an_empty_document() {
+  assert Lib.parse("") == table([])
+  assert Lib.parse(" \n# comment\r\n\t\n") == table([])
+}
+
+@test
+fn reads_booleans_and_integers() {
+  assert a("true") == Bool(True)
+  assert a("false") == Bool(False)
+  assert a("+99") == number(99)
+  assert a("-17") == number(-17)
+  assert a("0") == number(0)
+  assert a("-0") == number(0)
+  assert a("1_000") == number(1000)
+  assert a("5_349_221") == number(5349221)
+  assert a("0xDEAD_beef") == decimal("3735928559")
+  assert a("0o755") == number(493)
+  assert a("0b1101_0110") == number(214)
+  assert a("9223372036854775807") == decimal("9223372036854775807")
+  assert a("-9223372036854775808") == decimal("-9223372036854775808")
+  assert a("0x7fffffffffffffff") == decimal("9223372036854775807")
+}
+
+@test
+fn reads_floats() {
+  assert a("+1.0") == number(1)
+  assert a("3.1415") == decimal("3.1415")
+  assert a("-0.01") == decimal("-0.01")
+  assert a("5e+22") == decimal("5e22")
+  assert a("1e06") == decimal("1e6")
+  assert a("-2E-2") == decimal("-0.02")
+  assert a("6.626e-34") == decimal("6.626e-34")
+  assert a("224_617.445_991_228") == decimal("224617.445991228")
+}
+
+@test
+fn reads_dates_and_times_as_text() {
+  assert a("1979-05-27T07:32:00Z") == Text("1979-05-27T07:32:00Z")
+  assert a("1979-05-27T00:32:00.999999-07:00") == Text("1979-05-27T00:32:00.999999-07:00")
+  assert a("1979-05-27 07:32:00z") == Text("1979-05-27 07:32:00z")
+  assert a("1979-05-27t07:32:00") == Text("1979-05-27t07:32:00")
+  assert a("1979-05-27") == Text("1979-05-27")
+  assert a("00:32:00.999999") == Text("00:32:00.999999")
+  assert a("2000-02-29") == Text("2000-02-29")
+  assert a("[1979-05-27 , 07:32:00]") == Items([Text("1979-05-27"), Text("07:32:00")])
+}
+
+@test
+fn reads_basic_strings() {
+  assert a("\"\"") == Text("")
+  assert a("\"aあ\"") == Text("aあ")
+  assert a("\"\\b\\t\\n\\f\\r\\\"\\\\\"") == Text("\u{8}\t\n\u{c}\r\"\\")
+  assert a("\"\\u3042\\U0001F600\"") == Text("あ😀")
+  assert a("\"a\tb\"") == Text("a\tb")
+}
+
+@test
+fn reads_literal_strings() {
+  assert a("'C:\\Users\\nodejs'") == Text("C:\\Users\\nodejs")
+  assert a("'<\\i\\c*\\s*>'") == Text("<\\i\\c*\\s*>")
+  assert a("''") == Text("")
+}
+
+@test
+fn reads_multiline_strings() {
+  assert a("\"\"\"\nRoses\nViolets\"\"\"") == Text("Roses\nViolets")
+  assert a("\"\"\"\r\na\r\nb\"\"\"") == Text("a\nb")
+  assert a("\"\"\"\nThe quick \\\n\n   brown \\   \n  fox.\"\"\"") == Text("The quick brown fox.")
+  assert a("\"\"\"Here are two quotation marks: \"\". Simple enough.\"\"\"")
+    == Text("Here are two quotation marks: \"\". Simple enough.")
+  assert a("\"\"\"\"This,\" she said, \"is just a pointless statement.\"\"\"\"")
+    == Text("\"This,\" she said, \"is just a pointless statement.\"")
+  assert a("'''\nThe first newline is\ntrimmed in raw strings.\n'''")
+    == Text("The first newline is\ntrimmed in raw strings.\n")
+  assert a("''''That,' she said, 'is still pointless.'''''")
+    == Text("'That,' she said, 'is still pointless.''")
+  assert a("'''a\\nb'''") == Text("a\\nb")
+}
+
+@test
+fn reads_arrays() {
+  assert a("[]") == Items([])
+  assert a("[ 1, 2, 3 ]") == Items([number(1), number(2), number(3)])
+  assert a("[ \"a\", 'b', [1], {x = 1} ]")
+    == Items([Text("a"), Text("b"), Items([number(1)]), table([("x", number(1))])])
+  assert a("[\n  1, # one\n  2,\n]") == Items([number(1), number(2)])
+  assert a("[ 0.1, 1 ]") == Items([decimal("0.1"), number(1)])
+}
+
+@test
+fn reads_inline_tables() {
+  assert a("{}") == table([])
+  assert a("{ first = \"Tom\", last = \"Preston-Werner\" }")
+    == table([("first", Text("Tom")), ("last", Text("Preston-Werner"))])
+  assert a("{ type.name = \"pug\", type.size = 1 }")
+    == table([("type", table([("name", Text("pug")), ("size", number(1))]))])
+}
+
+@test
+fn reads_keys() {
+  assert Lib.parse("bare_key-1 = 1\n\"quoted key\" = 2\n'literal' = 3\n1234 = 4\n\"\" = 5")
+    == table(
+      [
+        ("bare_key-1", number(1)),
+        ("quoted key", number(2)),
+        ("literal", number(3)),
+        ("1234", number(4)),
+        ("", number(5)),
+      ],
+    )
+  assert Lib.parse("3.14159 = \"pi\"") == table([("3", table([("14159", Text("pi"))]))])
+  assert Lib.parse("site . \"google.com\" = true")
+    == table([("site", table([("google.com", Bool(True))]))])
+  assert Lib.parse("a.b = 1\na.c = 2")
+    == table([("a", table([("b", number(1)), ("c", number(2))]))])
+}
+
+@test
+fn reads_tables() {
+  text = "top = 0 # comment\n\n[a]\nx = 1\n\n[ a . b ]\ny = 2\n\n[c.d.e]\n[c]\nz = 3\n"
+  assert Lib.parse(text)
+    == table(
+      [
+        ("top", number(0)),
+        ("a", table([("x", number(1)), ("b", table([("y", number(2))]))])),
+        ("c", table([("z", number(3)), ("d", table([("e", table([]))]))])),
+      ],
+    )
+}
+
+@test
+fn reads_a_table_under_a_dotted_key() {
+  text = "[fruit]\napple.color = \"red\"\n[fruit.apple.texture]\nsmooth = true"
+  assert Lib.parse(text)
+    == table(
+      [
+        (
+          "fruit",
+          table(
+            [
+              (
+                "apple",
+                table([("color", Text("red")), ("texture", table([("smooth", Bool(True))]))]),
+              ),
+            ],
+          ),
+        ),
+      ],
+    )
+}
+
+@test
+fn reads_arrays_of_tables() {
+  text = "[[fruits]]\nname = \"apple\"\n[fruits.physical]\ncolor = \"red\"\n[[fruits.varieties]]\nname = \"red delicious\"\n[[fruits.varieties]]\nname = \"granny smith\"\n\n[[fruits]]\nname = \"banana\"\n[[fruits.varieties]]\nname = \"plantain\"\n"
+  assert Lib.parse(text)
+    == table(
+      [
+        (
+          "fruits",
+          Items(
+            [
+              table(
+                [
+                  ("name", Text("apple")),
+                  ("physical", table([("color", Text("red"))])),
+                  (
+                    "varieties",
+                    Items(
+                      [
+                        table([("name", Text("red delicious"))]),
+                        table([("name", Text("granny smith"))]),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              table(
+                [
+                  ("name", Text("banana")),
+                  ("varieties", Items([table([("name", Text("plantain"))])])),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    )
+  assert Lib.parse("[[a]]\n[[a]]") == table([("a", Items([table([]), table([])]))])
+}
+
+@test
+fn reports_where_it_fails() {
+  assert failure("a") == ("expected `=`", 1)
+  assert failure("a =") == ("unexpected end of input", 3)
+  assert failure("= 1") == ("expected a key", 0)
+  assert failure("a = 1 b = 2") == ("expected the end of the line", 6)
+  assert failure("a = 1\na = 2") == ("`a` is already defined", 6)
+  assert failure("a.b = 1\na = 2") == ("`a` is already defined", 8)
+  assert failure("a = 1\na.b = 2") == ("`a` is already defined", 6)
+  assert failure("a = {}\na.b = 2") == ("`a` is already defined", 7)
+  assert failure("a = {}\n[a.b]") == ("`a` is not a table", 7)
+  assert failure("a = { b = 1 }\n[a]") == ("`a` is already defined", 14)
+  assert failure("[a]\n[a]") == ("`a` is already defined", 4)
+  assert failure("[a]\nb = 1\n[a.b]") == ("`b` is already defined", 10)
+  assert failure("[a]\nb.c = 1\n[a.b]") == ("`b` is already defined", 12)
+  assert failure("[a.b.c]\n[a]\nb.d = 1") == ("`b` is already defined", 12)
+  assert failure("a = [1]\n[[a]]") == ("`a` is already defined", 8)
+  assert failure("[[a]]\n[a]") == ("`a` is already defined", 6)
+  assert failure("[a]\n[[a]]") == ("`a` is already defined", 4)
+  assert failure("a = { b = 1, b = 2 }") == ("`b` is already defined", 13)
+  assert failure("a = { b = 1, }") == ("expected a key", 13)
+  assert failure("a = { b = 1\n}") == ("expected `,` or `}`", 11)
+  assert failure("a = [1 2]") == ("expected `,` or `]`", 7)
+  assert failure("a = [,]") == ("expected a value", 5)
+  assert failure("[a") == ("expected `]`", 2)
+  assert failure("[[a]") == ("expected `]]`", 3)
+  assert failure("[]") == ("expected a key", 1)
+  assert failure("a = \"abc") == ("unterminated string", 8)
+  assert failure("a = \"a\nb\"") == ("control character", 6)
+  assert failure("a = 'a\u{7f}'") == ("control character", 6)
+  assert failure("a = 1 # \u{0}") == ("control character", 8)
+  assert failure("a = \"\\x\"") == ("invalid escape", 6)
+  assert failure("a = \"\\u12\"") == ("expected 4 hexadecimal digits", 7)
+  assert failure("a = \"\\ud800\"") == ("invalid code point", 5)
+  assert failure("a = \"\\U00110000\"") == ("invalid code point", 5)
+  assert failure("a = \"\"\"abc") == ("unterminated string", 10)
+  assert failure("a = '''a''''''") == ("expected the end of the line", 13)
+  assert failure("a = inf") == ("inf and nan are not supported", 4)
+  assert failure("a = -nan") == ("inf and nan are not supported", 4)
+  assert failure("a = 01") == ("invalid number", 4)
+  assert failure("a = 1__0") == ("invalid number", 4)
+  assert failure("a = _1") == ("expected a value", 4)
+  assert failure("a = 1_") == ("invalid number", 4)
+  assert failure("a = 1.") == ("invalid number", 4)
+  assert failure("a = .1") == ("expected a value", 4)
+  assert failure("a = 1.e2") == ("invalid number", 4)
+  assert failure("a = 0x") == ("invalid number", 4)
+  assert failure("a = 0xG") == ("invalid number", 4)
+  assert failure("a = +0x1") == ("invalid number", 4)
+  assert failure("a = 0b2") == ("invalid number", 4)
+  assert failure("a = 9223372036854775808") == ("invalid number", 4)
+  assert failure("a = 0x8000000000000000") == ("invalid number", 4)
+  assert failure("a = 1979-02-29") == ("invalid date or time", 4)
+  assert failure("a = 1979-13-01") == ("invalid date or time", 4)
+  assert failure("a = 1979-05-27T24:00:00") == ("invalid date or time", 4)
+  assert failure("a = 07:32") == ("invalid date or time", 4)
+  assert failure("a = 07:32:00Z") == ("invalid date or time", 4)
+  assert failure("a = 1979-05-27T07:32:00+7:00") == ("invalid date or time", 4)
+  assert failure("a = tru") == ("expected a value", 4)
+}
+
+@test
+fn reads_crlf_and_comments_around_headers() {
+  text = "# head\r\n[dog.\"tater.man\"] # c\r\n  type.name = \"pug\"\r\n\r\n[ j . \"ʞ\" . 'l' ]\r\n"
+  assert Lib.parse(text)
+    == table(
+      [
+        ("dog", table([("tater.man", table([("type", table([("name", Text("pug"))]))]))])),
+        ("j", table([("ʞ", table([("l", table([]))]))])),
+      ],
+    )
+}

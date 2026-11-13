@@ -1,0 +1,37 @@
+import Std.Map
+import Dynamic.{Fields, Items, Text}
+import Lib
+
+@test
+fn reads_many_lines() {
+  s = List.range(0, 20000).map(|i| "k#{i} = #{i}\n").join("")
+  Lib.parse(s) match {
+    Fields(m) -> assert m.size() == 20000
+    _         -> assert False
+  }
+}
+
+@test
+fn reads_a_long_array() {
+  s = "a = [#{List.range(0, 100000).map(|_| "1").join(",")}]"
+  Lib.parse(s) match {
+    Fields(m) -> m.get("a") match {
+      Some(Items(xs)) -> assert xs.length() == 100000
+      _               -> assert False
+    }
+    _ -> assert False
+  }
+}
+
+@test
+fn reads_a_long_string() {
+  s = List.range(0, 100000).map(|_| "a").join("")
+  assert Lib.parse("a = \"#{s}\"") == Fields(Map.from_list([("a", Text(s))]))
+}
+
+@test
+fn reads_deep_nesting() {
+  open = List.range(0, 1000).map(|_| "[").join("")
+  close = List.range(0, 1000).map(|_| "]").join("")
+  Lib.parse("a = #{open}#{close}")
+}
