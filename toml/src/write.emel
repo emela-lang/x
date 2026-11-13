@@ -1,0 +1,134 @@
+import Std.Map.{Map}
+import Dynamic.{Dynamic, Null, Bool, Number, Text, Items, Fields, Binary}
+import Dynamic.Number
+import Base64
+
+pub error Unwritable(message: String)
+
+# Writes `value`, which must be Fields, as a document. Keys come in the order of the Map.
+pub fn write(value: Dynamic) -> String fails Unwritable {
+  value match {
+    Fields(entries) -> table([], entries)
+    _               -> fail Unwritable(message: "the root of a document must be Fields")
+  }
+}
+
+# The `key = value` lines of `entries`, and then its tables and arrays of tables. `path` is the
+# keys of the table, already written in the form of a key.
+fn table(path: List[String], entries: Map[String, Dynamic]) -> String fails Unwritable {
+  pairs = entries.to_list()
+  lines = pairs.filter(|(_, v)| !is_table(v) && v != Null).map(|(k, v)| {
+    "#{key(k)} = #{inline(v)}\n"
+  })
+  sections = pairs.filter(|(_, v)| is_table(v)).map(|(k, v)| section(path, k, v))
+  "#{lines.join("")}#{sections.join("")}"
+}
+
+fn section(path: List[String], k: String, value: Dynamic) -> String fails Unwritable {
+  inner = path.append([key(k)])
+  name = inner.join(".")
+  value match {
+    Fields(entries) -> "\n[#{name}]\n#{table(inner, entries)}"
+    Items(xs) -> xs.map(|x| {
+      x match {
+        Fields(entries) -> "\n[[#{name}]]\n#{table(inner, entries)}"
+        _               -> panic("an array of tables holds only Fields")
+      }
+    }).join("")
+    _               -> panic("a section is Fields or Items")
+  }
+}
+
+# Whether `value` is written as a table or an array of tables, after the plain values.
+fn is_table(value: Dynamic) -> Bool {
+  value match {
+    Fields(_) -> True
+    Items(xs) -> xs != []
+      && xs.all(|x| {
+        x match {
+          Fields(_) -> True
+          _         -> False
+        }
+      })
+    _         -> False
+  }
+}
+
+fn inline(value: Dynamic) -> String fails Unwritable {
+  value match {
+    Null      -> fail Unwritable(message: "TOML has no null in an array")
+    Bool(b)   -> if b { "true" } else { "false" }
+    Number(n) -> number(n)
+    Text(s)   -> quote(s)
+    Binary(b) -> quote(Base64.encode(b))
+    Items(xs) -> "[#{xs.map(inline).join(", ")}]"
+    Fields(entries) -> {
+      pairs = entries.to_list().filter(|(_, v)| v != Null).map(|(k, v)| {
+        "#{key(k)} = #{inline(v)}"
+      })
+      if pairs == [] { "{}" } else { "{ #{pairs.join(", ")} }" }
+    }
+  }
+}
+
+# `Number.to_string` writes an integral value of up to 21 digits in full, which TOML reads as an
+# integer and so must fit in 64 bits. A larger one is written with an exponent instead.
+fn number(n: Number.Number) -> String {
+  s = n.to_string()
+  chars = s.chars()
+  integral = !chars.any(|c| c == "." || c == "e")
+  (sign, digits) = chars match {
+    ["-", ..more] -> ("-", more)
+    _             -> ("", chars)
+  }
+  limit = if sign == "-" { "9223372036854775808" } else { "9223372036854775807" }
+  length = digits.length()
+  if !integral || length < 19 || length == 19 && String.concat(digits) <= limit {
+    s
+  } else {
+    significant = strip_zeros(digits.reverse()).reverse()
+    fraction = significant.drop(1)
+    point = if fraction == [] { "" } else { ".#{String.concat(fraction)}" }
+    "#{sign}#{significant.take(1).join("")}#{point}e#{length - 1}"
+  }
+}
+
+fn key(k: String) -> String {
+  chars = k.chars()
+  bare = chars != []
+    && chars.all(|c| {
+      c >= "0" && c <= "9" || c >= "a" && c <= "z" || c >= "A" && c <= "Z" || c == "_" || c == "-"
+    })
+  if bare { k } else { quote(k) }
+}
+
+fn quote(s: String) -> String {
+  "\"#{s.chars().map(escaped).join("")}\""
+}
+
+fn escaped(c: String) -> String {
+  c match {
+    "\""    -> "\\\""
+    "\\"    -> "\\\\"
+    "\n"    -> "\\n"
+    "\r"    -> "\\r"
+    "\t"    -> "\\t"
+    "\u{8}" -> "\\b"
+    "\u{c}" -> "\\f"
+    _ -> {
+      p = c.code_points().fold(0, |_, p| p)
+      if p < 32 || p == 127 { "\\u00#{hex(p / 16)}#{hex(p % 16)}" } else { c }
+    }
+  }
+}
+
+fn hex(d: Int) -> String {
+  "0123456789abcdef".chars().get(d).or("0")
+}
+
+fn strip_zeros(chars: List[String]) -> List[String] {
+  chars match {
+    ["0", ..more] -> strip_zeros(more)
+    _             -> chars
+  }
+}

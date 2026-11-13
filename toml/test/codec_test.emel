@@ -1,0 +1,55 @@
+import Dynamic.{Dynamic, Decode, Encode, DecodeError, Text, Items}
+import Lib.{SyntaxError, WriteError}
+
+type User(name: String, tags: List[String])
+  derive Eq
+
+impl User: Encode {
+  fn to_dynamic(self) {
+    Dynamic.object([("name", Text(self.name)), ("tags", Items(self.tags.map(|t| Text(t))))])
+  }
+}
+
+impl User: Decode {
+  fn from_dynamic(d) {
+    User(name: d.field("name", Dynamic.string), tags: d.field("tags", Dynamic.list(Dynamic.string)))
+  }
+}
+
+@test
+fn encodes() {
+  assert Lib.encode(User(name: "a", tags: ["x"])) == "name = \"a\"\ntags = [\"x\"]\n"
+}
+
+@test
+fn decodes() {
+  user: User = Lib.decode("name = \"a\" # who\ntags = [\n  \"x\",\n]\n")
+  assert user == User(name: "a", tags: ["x"])
+}
+
+fn kind(text: String) -> String {
+  {
+    user: User = Lib.decode(text)
+    "ok"
+  } escape {
+    SyntaxError(..) -> "syntax"
+    DecodeError(..) -> "decode"
+  }
+}
+
+@test
+fn fails_with_either_error() {
+  assert kind("name = ") == "syntax"
+  assert kind("name = 1") == "decode"
+}
+
+@test
+fn fails_to_encode_what_is_not_a_table() {
+  failed = {
+    Lib.encode("text")
+    False
+  } escape {
+    WriteError(..) -> True
+  }
+  assert failed
+}

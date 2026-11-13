@@ -1,0 +1,817 @@
+import Std.Map.{Map}
+import Dynamic.{Dynamic, Decode, Encode, DecodeError, Bool, Number, Text, Items, Fields}
+import Dynamic.Number
+import Write.{Unwritable}
+
+## `offset` counts code points from the start of the input.
+pub error SyntaxError(message: String, offset: Int)
+
+## A value that a TOML document cannot hold.
+pub error WriteError(message: String)
+
+## Reads a TOML 1.0 document into Fields. Integers and floats become Number, and a date, a time
+## or a date-time becomes Text as it is written (`1979-05-27T07:32:00Z`). A key or a table
+## that is defined twice fails, as the specification says. `inf` and `nan` fail, since no
+## Number can hold them.
+pub fn parse(s: String) -> Dynamic fails SyntaxError {
+  # Code points rather than `chars`, whose grapheme clusters would join `\r\n` into one.
+  chars = s.code_points().filter_map(String.from_code_point)
+  entries = document(Rest(chars:, offset: 0), Map.empty(), [])
+  to_dynamic(Table(Explicit, entries))
+}
+
+## The TOML text of `value`, which must be Fields. Plain values come first as `key = value`,
+## then each Fields as a `[table]`, and each non-empty Items of only Fields as an
+## `[[array of tables]]`. A field that holds Null is left out, and Null in an array fails.
+## TOML has no bytes, so Binary is written as a string of standard base64 (`Base64.encode`,
+## RFC 4648 section 4), which `parse` reads back as Text.
+pub fn to_string(value: Dynamic) -> String fails WriteError {
+  Write.write(value) escape {
+    Unwritable(message:) -> fail WriteError(message:)
+  }
+}
+
+pub fn decode[A: Decode](text: String) -> A fails SyntaxError | DecodeError {
+  Decode.from_dynamic(parse(text))
+}
+
+pub fn encode[A: Encode](value: A) -> String fails WriteError {
+  value.to_dynamic() |> to_string()
+}
+
+# The input that is left, and its offset from the start.
+type Rest(chars: List[String], offset: Int)
+
+# How a table came to be. Only an Implicit table, made by a header for a table inside it, can
+# be defined again by its own header. Only a Dotted table, made by a dotted key, can take
+# more dotted keys.
+enum Kind {
+  Implicit
+  Explicit
+  Dotted
+}
+
+# A document while it is read. An inline table or an array is a Leaf, which nothing can extend.
+# Tables holds an array of tables with the last one first.
+enum Node {
+  Leaf(Dynamic)
+  Table(Kind, Map[String, Node])
+  Tables(List[Node])
+}
+
+fn to_dynamic(node: Node) -> Dynamic {
+  node match {
+    Leaf(value)         -> value
+    Table(_, entries)   -> Fields(entries.map_values(to_dynamic))
+    Tables(newer_first) -> Items(newer_first.reverse().map(to_dynamic))
+  }
+}
+
+# `current` is the path of the table that the last header opened.
+fn document(rest: Rest, root: Map[String, Node], current: List[String]) -> Map[String, Node]
+  fails SyntaxError {
+  start = skip_blank(rest)
+  start.chars match {
+    []                                            -> root
+    ["[", "[", ..more] -> {
+      (keys, after_keys) = key(skip_blank(Rest(chars: more, offset: start.offset + 2)))
+      after_close = after_keys.chars match {
+        ["]", "]", ..more] -> Rest(chars: more, offset: after_keys.offset + 2)
+        _                  -> fail SyntaxError(message: "expected `]]`", offset: after_keys.offset)
+      }
+      defined = header(root, keys, True, start.offset)
+      document(end_of_line(after_close), defined, keys)
+    }
+    ["[", ..more] -> {
+      (keys, after_keys) = key(skip_blank(Rest(chars: more, offset: start.offset + 1)))
+      after_close = after_keys.chars match {
+        ["]", ..more] -> Rest(chars: more, offset: after_keys.offset + 1)
+        _             -> fail SyntaxError(message: "expected `]`", offset: after_keys.offset)
+      }
+      defined = header(root, keys, False, start.offset)
+      document(end_of_line(after_close), defined, keys)
+    }
+    [c, ..] if c == "#" || c == "\n" || c == "\r" -> document(end_of_line(start), root, current)
+    _ -> {
+      (keys, value, after) = key_value(start)
+      assigned = assign_at(root, current, keys, value, start.offset)
+      document(end_of_line(after), assigned, current)
+    }
+  }
+}
+
+# A key, `=` and a value.
+fn key_value(rest: Rest) -> (List[String], Dynamic, Rest) fails SyntaxError {
+  (keys, after_keys) = key(rest)
+  after_equals = after_keys.chars match {
+    ["=", ..more] -> Rest(chars: more, offset: after_keys.offset + 1)
+    _             -> fail SyntaxError(message: "expected `=`", offset: after_keys.offset)
+  }
+  (value, after) = value(skip_blank(after_equals))
+  (keys, value, after)
+}
+
+# Defines the table at `keys` by a header, `[keys]` or, when `array` is set, `[[keys]]`.
+fn header(
+  entries: Map[String, Node],
+  keys: List[String],
+  array: Bool,
+  offset: Int,
+) -> Map[String, Node] fails SyntaxError {
+  keys match {
+    [] -> entries
+    [key] -> {
+      defined = entries.get(key) match {
+        None -> {
+          if array {
+            Tables([Table(Explicit, Map.empty())])
+          } else {
+            Table(Explicit, Map.empty())
+          }
+        }
+        Some(Table(Implicit, inner)) if !array -> Table(Explicit, inner)
+        Some(Tables(newer_first)) if array -> Tables([Table(Explicit, Map.empty()), ..newer_first])
+        _ -> fail SyntaxError(message: "`#{key}` is already defined", offset:)
+      }
+      entries.insert(key, defined)
+    }
+    [key, ..more] -> {
+      inner = entries.get(key) match {
+        None                     -> Table(Implicit, header(Map.empty(), more, array, offset))
+        Some(Table(kind, inner)) -> Table(kind, header(inner, more, array, offset))
+        Some(Tables([Table(kind, inner), ..older])) -> Tables(
+          [Table(kind, header(inner, more, array, offset)), ..older],
+        )
+        _                        -> fail SyntaxError(message: "`#{key}` is not a table", offset:)
+      }
+      entries.insert(key, inner)
+    }
+  }
+}
+
+# Assigns `value` to `keys` in the table at `path`, which the header made.
+fn assign_at(
+  entries: Map[String, Node],
+  path: List[String],
+  keys: List[String],
+  value: Dynamic,
+  offset: Int,
+) -> Map[String, Node] fails SyntaxError {
+  path match {
+    [] -> assign(entries, keys, value, offset)
+    [key, ..more] -> {
+      inner = entries.get(key) match {
+        Some(Table(kind, inner)) -> Table(kind, assign_at(inner, more, keys, value, offset))
+        Some(Tables([Table(kind, inner), ..older])) -> Tables(
+          [Table(kind, assign_at(inner, more, keys, value, offset)), ..older],
+        )
+        _                        -> panic("the table of the last header is missing")
+      }
+      entries.insert(key, inner)
+    }
+  }
+}
+
+fn assign(
+  entries: Map[String, Node],
+  keys: List[String],
+  value: Dynamic,
+  offset: Int,
+) -> Map[String, Node] fails SyntaxError {
+  keys match {
+    [] -> entries
+    [key] -> {
+      if entries.contains(key) {
+        fail SyntaxError(message: "`#{key}` is already defined", offset:)
+      }
+      entries.insert(key, Leaf(value))
+    }
+    [key, ..more] -> {
+      inner = entries.get(key) match {
+        None -> Table(Dotted, assign(Map.empty(), more, value, offset))
+        Some(Table(Dotted, inner)) -> Table(Dotted, assign(inner, more, value, offset))
+        _    -> fail SyntaxError(message: "`#{key}` is already defined", offset:)
+      }
+      entries.insert(key, inner)
+    }
+  }
+}
+
+# A dotted key, with the blanks after it skipped.
+fn key(rest: Rest) -> (List[String], Rest) fails SyntaxError {
+  dotted_key(rest, [])
+}
+
+fn dotted_key(rest: Rest, reversed: List[String]) -> (List[String], Rest) fails SyntaxError {
+  (part, after) = simple_key(rest)
+  next = skip_blank(after)
+  next.chars match {
+    [".", ..more] -> dotted_key(
+      skip_blank(Rest(chars: more, offset: next.offset + 1)),
+      [part, ..reversed],
+    )
+    _ -> ([part, ..reversed].reverse(), next)
+  }
+}
+
+fn simple_key(rest: Rest) -> (String, Rest) fails SyntaxError {
+  rest.chars match {
+    ["\"", ..more] -> basic_string(Rest(chars: more, offset: rest.offset + 1))
+    ["'", ..more]  -> literal_string(Rest(chars: more, offset: rest.offset + 1))
+    _ -> {
+      (bare, more) = span(rest.chars, is_bare)
+      if bare == [] {
+        fail SyntaxError(message: "expected a key", offset: rest.offset)
+      }
+      (String.concat(bare), Rest(chars: more, offset: rest.offset + bare.length()))
+    }
+  }
+}
+
+fn is_bare(c: String) -> Bool {
+  is_digit(c) || c >= "a" && c <= "z" || c >= "A" && c <= "Z" || c == "_" || c == "-"
+}
+
+fn value(rest: Rest) -> (Dynamic, Rest) fails SyntaxError {
+  rest.chars match {
+    ["\"", "\"", "\"", ..more] -> {
+      (s, after) = multiline_basic(
+        newline_after_quotes(Rest(chars: more, offset: rest.offset + 3)),
+        [],
+      )
+      (Text(s), after)
+    }
+    ["\"", ..more] -> {
+      (s, after) = basic_string(Rest(chars: more, offset: rest.offset + 1))
+      (Text(s), after)
+    }
+    ["'", "'", "'", ..more] -> {
+      (s, after) = multiline_literal(
+        newline_after_quotes(Rest(chars: more, offset: rest.offset + 3)),
+        [],
+      )
+      (Text(s), after)
+    }
+    ["'", ..more] -> {
+      (s, after) = literal_string(Rest(chars: more, offset: rest.offset + 1))
+      (Text(s), after)
+    }
+    ["t", "r", "u", "e", ..more] -> (Bool(True), Rest(chars: more, offset: rest.offset + 4))
+    ["f", "a", "l", "s", "e", ..more] -> (Bool(False), Rest(chars: more, offset: rest.offset + 5))
+    ["[", ..more] -> array(Rest(chars: more, offset: rest.offset + 1))
+    ["{", ..more] -> inline_table(Rest(chars: more, offset: rest.offset + 1))
+    [c, ..] if c == "+" || c == "-" || c == "i" || c == "n" || is_digit(c) -> scalar(rest)
+    []            -> fail SyntaxError(message: "unexpected end of input", offset: rest.offset)
+    _             -> fail SyntaxError(message: "expected a value", offset: rest.offset)
+  }
+}
+
+# After `[`. Newlines and comments may come between the items, and a comma after the last.
+fn array(rest: Rest) -> (Dynamic, Rest) fails SyntaxError {
+  start = skip_space(rest)
+  start.chars match {
+    ["]", ..more] -> (Items([]), Rest(chars: more, offset: start.offset + 1))
+    _             -> items(start, [])
+  }
+}
+
+# At an item. `reversed` holds the items read so far, the last one first.
+fn items(rest: Rest, reversed: List[Dynamic]) -> (Dynamic, Rest) fails SyntaxError {
+  (item, after_item) = value(rest)
+  added = [item, ..reversed]
+  after = skip_space(after_item)
+  after.chars match {
+    [",", ..more] -> {
+      next = skip_space(Rest(chars: more, offset: after.offset + 1))
+      next.chars match {
+        ["]", ..more] -> (Items(added.reverse()), Rest(chars: more, offset: next.offset + 1))
+        _             -> items(next, added)
+      }
+    }
+    ["]", ..more] -> (Items(added.reverse()), Rest(chars: more, offset: after.offset + 1))
+    _             -> fail SyntaxError(message: "expected `,` or `]`", offset: after.offset)
+  }
+}
+
+# After `{`. An inline table is on one line, without a comma after the last pair.
+fn inline_table(rest: Rest) -> (Dynamic, Rest) fails SyntaxError {
+  start = skip_blank(rest)
+  start.chars match {
+    ["}", ..more] -> (Fields(Map.empty()), Rest(chars: more, offset: start.offset + 1))
+    _             -> pairs(start, Map.empty())
+  }
+}
+
+fn pairs(rest: Rest, entries: Map[String, Node]) -> (Dynamic, Rest) fails SyntaxError {
+  (keys, value, after_value) = key_value(rest)
+  added = assign(entries, keys, value, rest.offset)
+  after = skip_blank(after_value)
+  after.chars match {
+    [",", ..more] -> pairs(skip_blank(Rest(chars: more, offset: after.offset + 1)), added)
+    ["}", ..more] -> (to_dynamic(Table(Dotted, added)), Rest(chars: more, offset: after.offset + 1))
+    _             -> fail SyntaxError(message: "expected `,` or `}`", offset: after.offset)
+  }
+}
+
+# After the opening `"`. Returns the contents and the input after the closing `"`.
+fn basic_string(rest: Rest) -> (String, Rest) fails SyntaxError {
+  (reversed, after) = basic_characters(rest, [])
+  (reversed.reverse().join(""), after)
+}
+
+fn basic_characters(rest: Rest, reversed: List[String]) -> (List[String], Rest) fails SyntaxError {
+  rest.chars match {
+    ["\"", ..more] -> (reversed, Rest(chars: more, offset: rest.offset + 1))
+    ["\\", ..more] -> {
+      (c, after) = escaped(Rest(chars: more, offset: rest.offset + 1))
+      basic_characters(after, [c, ..reversed])
+    }
+    [c, ..more] -> {
+      check_character(c, rest.offset)
+      basic_characters(Rest(chars: more, offset: rest.offset + 1), [c, ..reversed])
+    }
+    []             -> fail SyntaxError(message: "unterminated string", offset: rest.offset)
+  }
+}
+
+# After the opening `'`.
+fn literal_string(rest: Rest) -> (String, Rest) fails SyntaxError {
+  (literal, more) = span(rest.chars, |c| c != "'")
+  check_characters(literal, rest.offset)
+  more match {
+    ["'", ..after] -> (
+      String.concat(literal),
+      Rest(chars: after, offset: rest.offset + literal.length() + 1),
+    )
+    _ -> fail SyntaxError(message: "unterminated string", offset: rest.offset + literal.length())
+  }
+}
+
+# A newline right after the opening quotes of a multi-line string is not part of it.
+fn newline_after_quotes(rest: Rest) -> Rest {
+  rest.chars match {
+    ["\n", ..more]       -> Rest(chars: more, offset: rest.offset + 1)
+    ["\r", "\n", ..more] -> Rest(chars: more, offset: rest.offset + 2)
+    _                    -> rest
+  }
+}
+
+# After the opening `"""` and the newline after it. A newline is read as `\n`.
+fn multiline_basic(rest: Rest, reversed: List[String]) -> (String, Rest) fails SyntaxError {
+  rest.chars match {
+    ["\"", "\"", "\"", ..more] -> closing(more, rest.offset + 3, reversed, "\"")
+    ["\\", ..more] -> {
+      after_backslash = Rest(chars: more, offset: rest.offset + 1)
+      if line_ends(after_backslash.chars) {
+        multiline_basic(skip_space_only(after_backslash), reversed)
+      } else {
+        (c, after) = escaped(after_backslash)
+        multiline_basic(after, [c, ..reversed])
+      }
+    }
+    ["\r", "\n", ..more] -> multiline_basic(
+      Rest(chars: more, offset: rest.offset + 2),
+      ["\n", ..reversed],
+    )
+    ["\n", ..more] -> multiline_basic(
+      Rest(chars: more, offset: rest.offset + 1),
+      ["\n", ..reversed],
+    )
+    [c, ..more] -> {
+      check_character(c, rest.offset)
+      multiline_basic(Rest(chars: more, offset: rest.offset + 1), [c, ..reversed])
+    }
+    [] -> fail SyntaxError(message: "unterminated string", offset: rest.offset)
+  }
+}
+
+# After the opening `'''` and the newline after it.
+fn multiline_literal(rest: Rest, reversed: List[String]) -> (String, Rest) fails SyntaxError {
+  rest.chars match {
+    ["'", "'", "'", ..more] -> closing(more, rest.offset + 3, reversed, "'")
+    ["\r", "\n", ..more] -> multiline_literal(
+      Rest(chars: more, offset: rest.offset + 2),
+      ["\n", ..reversed],
+    )
+    ["\n", ..more] -> multiline_literal(
+      Rest(chars: more, offset: rest.offset + 1),
+      ["\n", ..reversed],
+    )
+    [c, ..more] -> {
+      check_character(c, rest.offset)
+      multiline_literal(Rest(chars: more, offset: rest.offset + 1), [c, ..reversed])
+    }
+    [] -> fail SyntaxError(message: "unterminated string", offset: rest.offset)
+  }
+}
+
+# After three closing quotes. Up to two more quotes belong to the string, as in `""""a"""""`.
+fn closing(
+  chars: List[String],
+  offset: Int,
+  reversed: List[String],
+  quote: String,
+) -> (String, Rest) {
+  (extra, more) = chars match {
+    [a, b, ..more] if a == quote && b == quote -> ([a, b], more)
+    [a, ..more] if a == quote                  -> ([a], more)
+    _                                          -> ([], chars)
+  }
+  (extra.append(reversed).reverse().join(""), Rest(chars: more, offset: offset + extra.length()))
+}
+
+# Whether only blanks are left before the end of the line.
+fn line_ends(chars: List[String]) -> Bool {
+  chars match {
+    [c, ..more] if c == " " || c == "\t" -> line_ends(more)
+    ["\n", ..]                           -> True
+    ["\r", "\n", ..]                     -> True
+    _                                    -> False
+  }
+}
+
+fn skip_space_only(rest: Rest) -> Rest {
+  rest.chars match {
+    [c, ..more] if c == " " || c == "\t" || c == "\n" -> skip_space_only(
+      Rest(chars: more, offset: rest.offset + 1),
+    )
+    ["\r", "\n", ..more] -> skip_space_only(Rest(chars: more, offset: rest.offset + 2))
+    _                    -> rest
+  }
+}
+
+# After `\`.
+fn escaped(rest: Rest) -> (String, Rest) fails SyntaxError {
+  next = Rest(chars: rest.chars.drop(1), offset: rest.offset + 1)
+  rest.chars match {
+    ["\"", ..] -> ("\"", next)
+    ["\\", ..] -> ("\\", next)
+    ["b", ..]  -> ("\u{8}", next)
+    ["f", ..]  -> ("\u{c}", next)
+    ["n", ..]  -> ("\n", next)
+    ["r", ..]  -> ("\r", next)
+    ["t", ..]  -> ("\t", next)
+    ["u", ..]  -> unicode(next, 4)
+    ["U", ..]  -> unicode(next, 8)
+    _          -> fail SyntaxError(message: "invalid escape", offset: rest.offset)
+  }
+}
+
+# After `\u` or `\U`, `length` hexadecimal digits of a Unicode scalar value.
+fn unicode(rest: Rest, length: Int) -> (String, Rest) fails SyntaxError {
+  values = rest.chars.take(length).filter_map(hex)
+  if values.length() != length {
+    fail SyntaxError(message: "expected #{length} hexadecimal digits", offset: rest.offset)
+  }
+  point = values.fold(0, |acc, d| acc * 16 + d)
+  c = if point >= 0xD800 && point <= 0xDFFF || point > 0x10FFFF {
+    None
+  } else {
+    String.from_code_point(point)
+  }
+  c match {
+    Some(c) -> (c, Rest(chars: rest.chars.drop(length), offset: rest.offset + length))
+    None    -> fail SyntaxError(message: "invalid code point", offset: rest.offset - 2)
+  }
+}
+
+# Fails on a control character other than tab, which no string or comment can hold as it is.
+fn check_character(c: String, offset: Int) -> () fails SyntaxError {
+  p = code_point(c)
+  if p < 32 && c != "\t" || p == 127 {
+    fail SyntaxError(message: "control character", offset:)
+  }
+}
+
+fn check_characters(chars: List[String], offset: Int) -> () fails SyntaxError {
+  chars match {
+    [c, ..more] -> {
+      check_character(c, offset)
+      check_characters(more, offset + 1)
+    }
+    [] -> ()
+  }
+}
+
+# A number, a date, a time, or a date-time. Takes the characters that can be part of one, and
+# a space between a date and a time.
+fn scalar(rest: Rest) -> (Dynamic, Rest) fails SyntaxError {
+  (first, after_first) = span(rest.chars, is_scalar)
+  (lexeme, more) = after_first match {
+    [" ", a, b, ":", ..] if is_date(first) && is_digit(a) && is_digit(b) -> {
+      (time, more) = span(after_first.drop(1), is_scalar)
+      (first.append([" ", ..time]), more)
+    }
+    _ -> (first, after_first)
+  }
+  after = Rest(chars: more, offset: rest.offset + lexeme.length())
+  text = String.concat(lexeme)
+  if (
+    text == "inf"
+      || text == "+inf"
+      || text == "-inf"
+      || text == "nan"
+      || text == "+nan"
+      || text == "-nan"
+  ) {
+    fail SyntaxError(message: "inf and nan are not supported", offset: rest.offset)
+  }
+  if lexeme.any(|c| c == ":") || is_date(lexeme) {
+    if !date_time(lexeme) {
+      fail SyntaxError(message: "invalid date or time", offset: rest.offset)
+    }
+    (Text(text), after)
+  } else {
+    n = number(lexeme) match {
+      Some(n) -> n
+      None    -> fail SyntaxError(message: "invalid number", offset: rest.offset)
+    }
+    (Number(n), after)
+  }
+}
+
+fn is_scalar(c: String) -> Bool {
+  (
+    is_digit(c)
+      || c >= "a" && c <= "z"
+      || c >= "A" && c <= "Z"
+      || c == "_"
+      || c == "+"
+      || c == "-"
+      || c == "."
+      || c == ":"
+  )
+}
+
+# Whether `chars` starts as a date, with four digits and `-`.
+fn is_date(chars: List[String]) -> Bool {
+  chars match {
+    [a, b, c, d, "-", ..] -> [a, b, c, d].all(is_digit)
+    _                     -> False
+  }
+}
+
+# A local date, a local time, a local date-time or an offset date-time (RFC 3339).
+fn date_time(chars: List[String]) -> Bool {
+  chars match {
+    [y1, y2, y3, y4, "-", m1, m2, "-", d1, d2, ..more] -> {
+      if ![y1, y2, y3, y4, m1, m2, d1, d2].all(is_digit) {
+        False
+      } else {
+        year = digits_value([y1, y2, y3, y4])
+        month = digits_value([m1, m2])
+        day = digits_value([d1, d2])
+        valid = month >= 1 && month <= 12 && day >= 1 && day <= days_in(year, month)
+        rest_valid = more match {
+          [] -> True
+          [t, ..time] if t == "T" || t == "t" || t == " " -> local_time(time) match {
+            Some(offset) -> time_offset(offset)
+            None         -> False
+          }
+          _  -> False
+        }
+        valid && rest_valid
+      }
+    }
+    _ -> local_time(chars) == Some([])
+  }
+}
+
+# Reads `hh:mm:ss` and a fraction, and returns what comes after them.
+fn local_time(chars: List[String]) -> Option[List[String]] {
+  chars match {
+    [h1, h2, ":", m1, m2, ":", s1, s2, ..more] if [h1, h2, m1, m2, s1, s2].all(is_digit) -> {
+      if digits_value([h1, h2]) > 23 || digits_value([m1, m2]) > 59 || digits_value([s1, s2]) > 60 {
+        None
+      } else {
+        more match {
+          [".", ..fraction] -> {
+            (digits, after) = span(fraction, is_digit)
+            if digits == [] { None } else { Some(after) }
+          }
+          _ -> Some(more)
+        }
+      }
+    }
+    _ -> None
+  }
+}
+
+fn time_offset(chars: List[String]) -> Bool {
+  chars match {
+    []                          -> True
+    [z] if z == "Z" || z == "z" -> True
+    [sign, h1, h2, ":", m1, m2] if sign == "+" || sign == "-" -> {
+      [h1, h2, m1, m2].all(is_digit) && digits_value([h1, h2]) <= 23 && digits_value([m1, m2]) <= 59
+    }
+    _                           -> False
+  }
+}
+
+fn days_in(year: Int, month: Int) -> Int {
+  if month == 2 {
+    if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) { 29 } else { 28 }
+  } else if month == 4 || month == 6 || month == 9 || month == 11 {
+    30
+  } else {
+    31
+  }
+}
+
+fn digits_value(digits: List[String]) -> Int {
+  digits.fold(0, |acc, d| acc * 10 + code_point(d) - 48)
+}
+
+# An integer in decimal, hexadecimal (`0x`), octal (`0o`) or binary (`0b`) that fits in 64 bits,
+# or a float. `_` may stand between two digits.
+fn number(chars: List[String]) -> Option[Number.Number] {
+  chars match {
+    ["0", "x", ..more] -> radix(more, 16)
+    ["0", "o", ..more] -> radix(more, 8)
+    ["0", "b", ..more] -> radix(more, 2)
+    ["+", ..more]      -> decimal("", more)
+    ["-", ..more]      -> decimal("-", more)
+    _                  -> decimal("", chars)
+  }
+}
+
+fn decimal(sign: String, chars: List[String]) -> Option[Number.Number] {
+  (whole_part, after_whole) = span(chars, |c| is_digit(c) || c == "_")
+  (fraction_part, after_fraction) = after_whole match {
+    [".", ..more] -> span(more, |c| is_digit(c) || c == "_")
+    _             -> ([], after_whole)
+  }
+  has_fraction = after_whole != after_fraction
+  (exponent_sign, exponent_part, after_exponent) = after_fraction match {
+    [e, s, ..more] if (e == "e" || e == "E") && (s == "+" || s == "-") -> {
+      (digits, after) = span(more, |c| is_digit(c) || c == "_")
+      (s, digits, after)
+    }
+    [e, ..more] if e == "e" || e == "E" -> {
+      (digits, after) = span(more, |c| is_digit(c) || c == "_")
+      ("", digits, after)
+    }
+    _ -> ("", [], after_fraction)
+  }
+  has_exponent = after_fraction != after_exponent
+  whole = digits_of(whole_part, is_digit)
+  fraction = if has_fraction { digits_of(fraction_part, is_digit) } else { Some([]) }
+  exponent = if has_exponent { digits_of(exponent_part, is_digit) } else { Some([]) }
+  (whole, fraction, exponent, after_exponent) match {
+    (Some(w), Some(f), Some(e), []) -> {
+      leading_zero = w match {
+        ["0", _, ..] -> True
+        _            -> False
+      }
+      if leading_zero {
+        None
+      } else if !has_fraction && !has_exponent {
+        integer(sign, String.concat(w))
+      } else {
+        point = if has_fraction { ".#{String.concat(f)}" } else { "" }
+        power = if has_exponent { "e#{exponent_sign}#{String.concat(e)}" } else { "" }
+        parse_number("#{sign}#{String.concat(w)}#{point}#{power}")
+      }
+    }
+    _ -> None
+  }
+}
+
+# The digits of `chars` without `_`, if they are not empty and each `_` stands between two
+# digits.
+fn digits_of(chars: List[String], digit: fn(String) -> Bool) -> Option[List[String]] {
+  valid = chars match {
+    []          -> False
+    [first, ..] -> digit(first) && chars.last().map(digit).or(False) && underscores(chars, digit)
+  }
+  if valid { Some(chars.filter(|c| c != "_")) } else { None }
+}
+
+fn underscores(chars: List[String], digit: fn(String) -> Bool) -> Bool {
+  chars match {
+    ["_", "_", ..] -> False
+    [c, ..more]    -> (c == "_" || digit(c)) && underscores(more, digit)
+    []             -> True
+  }
+}
+
+# A decimal integer in 64 bits.
+fn integer(sign: String, digits: String) -> Option[Number.Number] {
+  limit = if sign == "-" { "9223372036854775808" } else { "9223372036854775807" }
+  length = digits.length()
+  if length > 19 || length == 19 && digits > limit {
+    None
+  } else {
+    parse_number("#{sign}#{digits}")
+  }
+}
+
+fn parse_number(s: String) -> Option[Number.Number] {
+  {
+    Some(Number.parse(s))
+  } escape {
+    ParseError(..) -> None
+  }
+}
+
+fn radix(chars: List[String], base: Int) -> Option[Number.Number] {
+  digit = |c| hex(c).map(|d| d < base).or(False)
+  digits_of(chars, digit) match {
+    None -> None
+    Some(digits) -> {
+      # The decimal digits, the least significant first.
+      little = digits.fold([], |acc, c| times_add(acc, base, hex(c).or(0)))
+      decimal = little.reverse().map(|d| d.to_string()).join("")
+      integer("", if decimal == "" { "0" } else { decimal })
+    }
+  }
+}
+
+fn times_add(digits: List[Int], base: Int, add: Int) -> List[Int] {
+  digits match {
+    [] -> if add == 0 { [] } else { [add % 10, ..times_add([], base, add / 10)] }
+    [d, ..more] -> {
+      v = d * base + add
+      [v % 10, ..times_add(more, base, v / 10)]
+    }
+  }
+}
+
+fn hex(c: String) -> Option[Int] {
+  p = code_point(c)
+  if p >= 48 && p <= 57 {
+    Some(p - 48)
+  } else if p >= 97 && p <= 102 {
+    Some(p - 87)
+  } else if p >= 65 && p <= 70 {
+    Some(p - 55)
+  } else {
+    None
+  }
+}
+
+# Skips spaces and tabs.
+fn skip_blank(rest: Rest) -> Rest {
+  rest.chars match {
+    [c, ..more] if c == " " || c == "\t" -> skip_blank(Rest(chars: more, offset: rest.offset + 1))
+    _                                    -> rest
+  }
+}
+
+# Skips blanks, newlines and comments, as between the items of an array.
+fn skip_space(rest: Rest) -> Rest fails SyntaxError {
+  start = skip_blank(rest)
+  start.chars match {
+    ["#", ..]            -> skip_space(skip_comment(start))
+    ["\n", ..more]       -> skip_space(Rest(chars: more, offset: start.offset + 1))
+    ["\r", "\n", ..more] -> skip_space(Rest(chars: more, offset: start.offset + 2))
+    _                    -> start
+  }
+}
+
+# Skips blanks and a comment, and then the newline. The input may end instead.
+fn end_of_line(rest: Rest) -> Rest fails SyntaxError {
+  start = skip_comment(skip_blank(rest))
+  start.chars match {
+    [] -> start
+    ["\n", ..more] -> Rest(chars: more, offset: start.offset + 1)
+    ["\r", "\n", ..more] -> Rest(chars: more, offset: start.offset + 2)
+    _  -> fail SyntaxError(message: "expected the end of the line", offset: start.offset)
+  }
+}
+
+# Skips a comment, if `rest` is at one, up to the newline.
+fn skip_comment(rest: Rest) -> Rest fails SyntaxError {
+  rest.chars match {
+    ["#", ..more] -> {
+      (comment, after) = span(more, |c| c != "\n" && c != "\r")
+      check_characters(comment, rest.offset + 1)
+      Rest(chars: after, offset: rest.offset + 1 + comment.length())
+    }
+    _ -> rest
+  }
+}
+
+fn span(chars: List[String], f: fn(String) -> Bool) -> (List[String], List[String]) {
+  (reversed, after) = span_reversed(chars, f, [])
+  (reversed.reverse(), after)
+}
+
+fn span_reversed(
+  chars: List[String],
+  f: fn(String) -> Bool,
+  reversed: List[String],
+) -> (List[String], List[String]) {
+  chars match {
+    [c, ..more] if f(c) -> span_reversed(more, f, [c, ..reversed])
+    _                   -> (reversed, chars)
+  }
+}
+
+fn is_digit(c: String) -> Bool {
+  c >= "0" && c <= "9"
+}
+
+fn code_point(c: String) -> Int {
+  c.code_points().fold(0, |_, p| p)
+}

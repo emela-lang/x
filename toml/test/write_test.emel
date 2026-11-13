@@ -1,0 +1,128 @@
+import Std.Map
+import Std.Bytes
+import Dynamic.{Dynamic, Null, Bool, Text, Items, Fields, Binary}
+import Dynamic.Number
+import Lib.{WriteError}
+
+fn number(n: Int) -> Dynamic {
+  Dynamic.Number(Number.from_int(n))
+}
+
+fn decimal(s: String) -> Dynamic fails ParseError {
+  Dynamic.Number(Number.parse(s))
+}
+
+fn table(pairs: List[(String, Dynamic)]) -> Dynamic {
+  Fields(Map.from_list(pairs))
+}
+
+fn failure(value: Dynamic) -> String {
+  {
+    Lib.to_string(value)
+    ""
+  } escape {
+    WriteError(message:) -> message
+  }
+}
+
+@test
+fn writes_plain_values() {
+  assert Lib.to_string(table([])) == ""
+  assert Lib.to_string(
+    table(
+      [
+        ("b", Bool(True)),
+        ("i", number(-3)),
+        ("f", decimal("0.25")),
+        ("s", Text("a\"\\\n\t\u{1}\u{7f}あ")),
+        ("x", Items([number(1), Text("y"), Items([]), table([("k", Bool(False))]), table([])])),
+      ],
+    ),
+  )
+    == "b = true\nf = 0.25\ni = -3\ns = \"a\\\"\\\\\\n\\t\\u0001\\u007fあ\"\nx = [1, \"y\", [], { k = false }, {}]\n"
+}
+
+@test
+fn writes_numbers_that_read_back() {
+  assert Lib.to_string(table([("a", decimal("1.5e300"))])) == "a = 1.5e300\n"
+  assert Lib.to_string(table([("a", decimal("1e-7"))])) == "a = 1e-7\n"
+  assert Lib.to_string(table([("a", decimal("9223372036854775807"))]))
+    == "a = 9223372036854775807\n"
+  assert Lib.to_string(table([("a", decimal("-9223372036854775808"))]))
+    == "a = -9223372036854775808\n"
+  assert Lib.to_string(table([("a", decimal("9223372036854775808"))]))
+    == "a = 9.223372036854775808e18\n"
+  assert Lib.to_string(table([("a", decimal("-100000000000000000000"))])) == "a = -1e20\n"
+}
+
+@test
+fn quotes_keys_that_are_not_bare() {
+  assert Lib.to_string(
+    table([("a b", number(1)), ("", number(2)), ("a.b", number(3)), ("x-1_Y", number(4))]),
+  )
+    == "\"\" = 2\n\"a b\" = 1\n\"a.b\" = 3\nx-1_Y = 4\n"
+}
+
+@test
+fn writes_tables_after_plain_values() {
+  value = table(
+    [
+      ("a", table([("x", number(1)), ("b", table([("y", number(2))]))])),
+      ("e", table([])),
+      ("z", number(0)),
+      ("t", Items([table([("n", number(1))]), table([("m", table([("k", number(2))]))])])),
+    ],
+  )
+  assert Lib.to_string(value)
+    == "z = 0\n\n[a]\nx = 1\n\n[a.b]\ny = 2\n\n[e]\n\n[[t]]\nn = 1\n\n[[t]]\n\n[t.m]\nk = 2\n"
+}
+
+@test
+fn leaves_out_null_fields() {
+  assert Lib.to_string(
+    table([("a", Null), ("b", table([("c", Null)])), ("d", Items([table([("e", Null)])]))]),
+  )
+    == "\n[b]\n\n[[d]]\n"
+  assert Lib.to_string(table([("a", Items([table([("b", Null), ("c", number(1))]), number(2)]))]))
+    == "a = [{ c = 1 }, 2]\n"
+}
+
+@test
+fn writes_binary_as_base64() {
+  assert Lib.to_string(table([("a", Binary(Bytes.encode_utf8("hi")))])) == "a = \"aGk=\"\n"
+}
+
+@test
+fn fails_on_what_toml_cannot_hold() {
+  assert failure(Null) == "the root of a document must be Fields"
+  assert failure(Items([])) == "the root of a document must be Fields"
+  assert failure(table([("a", Items([Null]))])) == "TOML has no null in an array"
+}
+
+@test
+fn reads_back_what_it_writes() {
+  value = table(
+    [
+      ("title", Text("TOML \"example\"\n")),
+      ("owner", table([("name", Text("Tom")), ("dob", Text("1979-05-27T07:32:00-08:00"))])),
+      ("ports", Items([number(8000), number(8001)])),
+      ("big", decimal("123456789012345678901234")),
+      ("small", decimal("-1.5e-300")),
+      (
+        "servers",
+        table(
+          [
+            ("alpha", table([("ip", Text("10.0.0.1"))])),
+            ("with space", table([("on", Bool(True))])),
+          ],
+        ),
+      ),
+      (
+        "products",
+        Items([table([("name", Text("Hammer"))]), table([]), table([("sku", number(284758393))])]),
+      ),
+      ("mixed", Items([table([("a", number(1))]), Items([number(1)])])),
+    ],
+  )
+  assert Lib.parse(Lib.to_string(value)) == value
+}
