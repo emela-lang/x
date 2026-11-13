@@ -1,0 +1,8 @@
+[pome]
+name = "github.com/emela-lang/x/yaml"
+version = "0.1.0"
+emela = "0.27.0"
+
+[dependencies]
+"github.com/emela-lang/x/dynamic" = "v0.5.1"
+"github.com/emela-lang/x/base64" = "v0.1.1"

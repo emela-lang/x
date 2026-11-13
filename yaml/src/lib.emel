@@ -1,0 +1,707 @@
+import Std.Map.{Map}
+import Dynamic.{Dynamic, Decode, Encode, DecodeError, Null, Text, Items, Fields}
+import Scalar
+import Write
+
+## `offset` counts code points from the start of the input.
+pub error SyntaxError(message: String, offset: Int)
+
+## Reads one YAML document into a Dynamic. It reads the part of YAML 1.2 that configuration files
+## use: block mappings and sequences, flow `[...]` and `{...}`, plain, `'...'` and `"..."`
+## scalars, literal `|` and folded `>` block scalars, and comments. A plain scalar is typed by the
+## core schema (`null`, `true`, `12`, `1.5e3`, `0x1f`); a key is always the text as written.
+##
+## These fail with SyntaxError: anchors and aliases, tags, directives, complex keys (`?`), more
+## than one document, a plain scalar over several lines, an indentation indicator on a block
+## scalar, a repeated key, and `.inf` and `.nan`, which no Number can hold.
+pub fn parse(s: String) -> Dynamic fails SyntaxError {
+  # By code point: `String.chars` gives grapheme clusters, which join `\r\n` and a combining
+  # character with the one before it.
+  chars = s.code_points().filter_map(String.from_code_point)
+  start = content(Rest(chars:, offset: 0, column: 0))
+  (value, after) = if is_marker(start, "-") {
+    header = skip_inline(advance(start, 3))
+    if at_line_end(header) {
+      document(next_content(header))
+    } else {
+      node(header, -1, False)
+    }
+  } else if start.column == 0 && start.chars.head() == Some("%") {
+    fail SyntaxError(message: "directives are not supported", offset: start.offset)
+  } else {
+    document(start)
+  }
+  finish(next_content(after))
+  value
+}
+
+## A YAML document of `value` in block style, ending with a newline. A string is written plain
+## when it reads back as the same string, and in double quotes otherwise. YAML without tags has
+## no bytes, so Binary is written as a string of standard base64 (RFC 4648 section 4), which
+## `parse` reads back as Text.
+pub fn to_string(value: Dynamic) -> String {
+  Write.write(value)
+}
+
+pub fn decode[A: Decode](text: String) -> A fails SyntaxError | DecodeError {
+  Decode.from_dynamic(parse(text))
+}
+
+pub fn encode[A: Encode](value: A) -> String {
+  value.to_dynamic() |> to_string()
+}
+
+# The input that is left, its offset from the start, and its column in the line.
+type Rest(chars: List[String], offset: Int, column: Int)
+
+# A key or a scalar, before it is known which.
+enum Scalar {
+  Plain(String)
+  Quoted(String)
+}
+
+# The node of a document at `start`, the first content of a line or the end of input.
+fn document(start: Rest) -> (Dynamic, Rest) fails SyntaxError {
+  if start.chars == [] || is_marker(start, "-") || is_marker(start, ".") {
+    (Null, start)
+  } else {
+    node(start, -1, True)
+  }
+}
+
+# After the document, at the first content of a line or the end of input.
+fn finish(rest: Rest) -> () fails SyntaxError {
+  if is_marker(rest, "-") {
+    fail SyntaxError(message: "more than one document is not supported", offset: rest.offset)
+  } else if is_marker(rest, ".") {
+    after = skip_inline(advance(rest, 3))
+    if !at_line_end(after) {
+      fail SyntaxError(message: "expected the end of the line", offset: after.offset)
+    }
+    tail = next_content(after)
+    if tail.chars != [] {
+      fail SyntaxError(message: "more than one document is not supported", offset: tail.offset)
+    }
+  } else if rest.chars != [] {
+    fail SyntaxError(message: "expected the end of input", offset: rest.offset)
+  }
+}
+
+# `---` or `...` at the start of a line, followed by a space or the end of the line.
+fn is_marker(rest: Rest, c: String) -> Bool {
+  rest.column == 0 && rest.chars.take(3) == [c, c, c] && is_break(rest.chars.drop(3))
+}
+
+# Whether `chars` starts with whitespace or a line end, or is empty.
+fn is_break(chars: List[String]) -> Bool {
+  chars match {
+    []      -> True
+    [c, ..] -> c == " " || c == "\t" || is_newline(c)
+  }
+}
+
+fn is_newline(c: String) -> Bool {
+  c == "\n" || c == "\r"
+}
+
+fn advance(rest: Rest, n: Int) -> Rest {
+  Rest(chars: rest.chars.drop(n), offset: rest.offset + n, column: rest.column + n)
+}
+
+fn at_line_end(rest: Rest) -> Bool {
+  rest.chars match {
+    []      -> True
+    [c, ..] -> is_newline(c)
+  }
+}
+
+# Past the line end at `rest`, at the start of the next line.
+fn past_line_end(rest: Rest) -> Rest {
+  rest.chars match {
+    ["\r", "\n", ..more] -> Rest(chars: more, offset: rest.offset + 2, column: 0)
+    [c, ..more] -> Rest(chars: more, offset: rest.offset + c.code_points().length(), column: 0)
+    []          -> rest
+  }
+}
+
+# Skips spaces and tabs, and a comment up to the end of the line.
+fn skip_inline(rest: Rest) -> Rest {
+  rest.chars match {
+    [c, ..] if c == " " || c == "\t" -> skip_inline(advance(rest, 1))
+    ["#", ..]                        -> to_line_end(rest)
+    _                                -> rest
+  }
+}
+
+fn to_line_end(rest: Rest) -> Rest {
+  if at_line_end(rest) { rest } else { to_line_end(advance(rest, 1)) }
+}
+
+# From a line end, the first content of a following line, or the end of input.
+fn next_content(rest: Rest) -> Rest fails SyntaxError {
+  content(past_line_end(rest))
+}
+
+# From the start of a line, the first content of this or a following line, skipping blank lines
+# and comments. Its column is the indentation.
+fn content(rest: Rest) -> Rest fails SyntaxError {
+  rest.chars match {
+    [" ", ..] -> content(advance(rest, 1))
+    ["\t", ..] -> {
+      after = skip_inline(rest)
+      if !at_line_end(after) {
+        fail SyntaxError(message: "tabs cannot indent", offset: rest.offset)
+      }
+      content(after)
+    }
+    ["#", ..] -> next_content(to_line_end(rest))
+    []        -> rest
+    _         -> if at_line_end(rest) { next_content(rest) } else { rest }
+  }
+}
+
+# The node at `rest`, the first content of its line or after `- ` or `key: `. Its parent node is
+# indented by `parent`. A block mapping or sequence can start here only when `collections`.
+# Returns the rest at the end of the node's last line.
+fn node(rest: Rest, parent: Int, collections: Bool) -> (Dynamic, Rest) fails SyntaxError {
+  rest.chars match {
+    ["-", ..more] if is_break(more) -> {
+      if !collections {
+        fail SyntaxError(message: "a sequence cannot start here", offset: rest.offset)
+      }
+      sequence(rest, [])
+    }
+    ["?", ..more] if is_break(more) -> fail SyntaxError(
+      message: "complex keys are not supported",
+      offset: rest.offset,
+    )
+    ["&", ..] -> fail SyntaxError(message: "anchors are not supported", offset: rest.offset)
+    ["*", ..] -> fail SyntaxError(message: "aliases are not supported", offset: rest.offset)
+    ["!", ..] -> fail SyntaxError(message: "tags are not supported", offset: rest.offset)
+    ["|", ..] -> block_scalar(rest, parent, True)
+    [">", ..] -> block_scalar(rest, parent, False)
+    [c, ..] if c == "[" || c == "{" -> {
+      (value, after) = flow_node(rest)
+      end = skip_inline(after)
+      if !at_line_end(end) {
+        fail SyntaxError(message: "expected the end of the line", offset: end.offset)
+      }
+      (value, end)
+    }
+    _ -> {
+      (scalar, after) = scalar(rest, False)
+      colon = skip_spaces(after)
+      if is_colon(colon.chars) {
+        if !collections {
+          fail SyntaxError(message: "a mapping cannot start here", offset: rest.offset)
+        }
+        mapping(rest, rest.column, key(scalar), advance(colon, 1), Map.empty())
+      } else {
+        end = skip_inline(after)
+        if !at_line_end(end) {
+          fail SyntaxError(message: "expected the end of the line", offset: end.offset)
+        }
+        (value(scalar, rest), end)
+      }
+    }
+  }
+}
+
+fn skip_spaces(rest: Rest) -> Rest {
+  rest.chars match {
+    [c, ..] if c == " " || c == "\t" -> skip_spaces(advance(rest, 1))
+    _                                -> rest
+  }
+}
+
+# `:` that ends a key in block context.
+fn is_colon(chars: List[String]) -> Bool {
+  chars match {
+    [":", ..more] -> is_break(more)
+    _             -> False
+  }
+}
+
+fn key(scalar: Scalar) -> String {
+  scalar match {
+    Plain(s)  -> s
+    Quoted(s) -> s
+  }
+}
+
+fn value(scalar: Scalar, at: Rest) -> Dynamic fails SyntaxError {
+  scalar match {
+    Quoted(s) -> Text(s)
+    Plain(s) -> Scalar.resolve(s) match {
+      Some(v) -> v
+      None    -> fail SyntaxError(message: "infinity and NaN are not supported", offset: at.offset)
+    }
+  }
+}
+
+# A plain or quoted scalar at `rest`.
+fn scalar(rest: Rest, flow: Bool) -> (Scalar, Rest) fails SyntaxError {
+  rest.chars match {
+    ["\"", ..] -> {
+      (s, after) = double_quoted(advance(rest, 1), [])
+      (Quoted(s), after)
+    }
+    ["'", ..] -> {
+      (s, after) = single_quoted(advance(rest, 1), [])
+      (Quoted(s), after)
+    }
+    [c, ..more] -> {
+      if (
+        is_indicator(c) && !(c == "-" || c == "?" || c == ":")
+          || (c == "-" || c == "?" || c == ":") && is_break(more)
+      ) {
+        fail SyntaxError(message: "unexpected character: #{c}", offset: rest.offset)
+      }
+      (s, after) = plain(rest, flow, [])
+      (Plain(s), after)
+    }
+    [] -> fail SyntaxError(message: "unexpected end of input", offset: rest.offset)
+  }
+}
+
+fn is_indicator(c: String) -> Bool {
+  "-?:,[]{}#&*!|>'\"%@`".chars().any(|i| i == c)
+}
+
+fn is_flow_indicator(c: String) -> Bool {
+  ",[]{}".chars().any(|i| i == c)
+}
+
+# A plain scalar on one line. It ends before `: `, ` #` and the line end, and in flow context
+# also before `,`, `[`, `]`, `{` and `}`. Trailing whitespace is not part of it.
+fn plain(rest: Rest, flow: Bool, reversed: List[String]) -> (String, Rest) {
+  ends = rest.chars match {
+    []            -> True
+    [":", ..more] -> is_break(more) || flow && more.head().map(is_flow_indicator).or(False)
+    [c, ..] if flow && is_flow_indicator(c) -> True
+    [c, "#", ..] if c == " " || c == "\t" -> True
+    _             -> at_line_end(rest)
+  }
+  if ends {
+    (drop_spaces(reversed).reverse().join(""), rest)
+  } else {
+    plain(advance(rest, 1), flow, [rest.chars.head().or(""), ..reversed])
+  }
+}
+
+fn drop_spaces(reversed: List[String]) -> List[String] {
+  reversed match {
+    [c, ..more] if c == " " || c == "\t" -> drop_spaces(more)
+    _                                    -> reversed
+  }
+}
+
+# After the opening `'`. `''` is a quote, and line breaks fold.
+fn single_quoted(rest: Rest, reversed: List[String]) -> (String, Rest) fails SyntaxError {
+  rest.chars match {
+    ["'", "'", ..] -> single_quoted(advance(rest, 2), ["'", ..reversed])
+    ["'", ..]      -> (reversed.reverse().join(""), advance(rest, 1))
+    []             -> fail SyntaxError(message: "unterminated string", offset: rest.offset)
+    [c, ..] -> {
+      if at_line_end(rest) {
+        (folded, after) = fold(rest, drop_spaces(reversed))
+        single_quoted(after, folded)
+      } else {
+        single_quoted(advance(rest, 1), [c, ..reversed])
+      }
+    }
+  }
+}
+
+# After the opening `"`.
+fn double_quoted(rest: Rest, reversed: List[String]) -> (String, Rest) fails SyntaxError {
+  rest.chars match {
+    ["\"", ..] -> (reversed.reverse().join(""), advance(rest, 1))
+    ["\\", ..more] -> {
+      after_slash = advance(rest, 1)
+      if at_line_end(after_slash) {
+        # An escaped line break joins the lines without a space.
+        double_quoted(skip_spaces(past_line_end(after_slash)), reversed)
+      } else {
+        (c, after) = escaped(after_slash)
+        double_quoted(after, [c, ..reversed])
+      }
+    }
+    []         -> fail SyntaxError(message: "unterminated string", offset: rest.offset)
+    [c, ..] -> {
+      if at_line_end(rest) {
+        (folded, after) = fold(rest, drop_spaces(reversed))
+        double_quoted(after, folded)
+      } else {
+        double_quoted(advance(rest, 1), [c, ..reversed])
+      }
+    }
+  }
+}
+
+# Folds the line break at `rest` in a quoted scalar: into a space, or into a line feed for each
+# empty line after it. Leading whitespace of the next line is dropped.
+fn fold(rest: Rest, reversed: List[String]) -> (List[String], Rest) {
+  (count, next) = empty_lines(skip_spaces(past_line_end(rest)), 0)
+  if count == 0 {
+    ([" ", ..reversed], next)
+  } else {
+    (breaks(count, reversed), next)
+  }
+}
+
+fn breaks(n: Int, reversed: List[String]) -> List[String] {
+  if n == 0 { reversed } else { breaks(n - 1, ["\n", ..reversed]) }
+}
+
+fn empty_lines(rest: Rest, n: Int) -> (Int, Rest) {
+  if rest.chars != [] && at_line_end(rest) {
+    empty_lines(skip_spaces(past_line_end(rest)), n + 1)
+  } else {
+    (n, rest)
+  }
+}
+
+# After `\`.
+fn escaped(rest: Rest) -> (String, Rest) fails SyntaxError {
+  next = advance(rest, 1)
+  rest.chars match {
+    ["0", ..]  -> ("\u{0}", next)
+    ["a", ..]  -> ("\u{7}", next)
+    ["b", ..]  -> ("\u{8}", next)
+    ["t", ..]  -> ("\t", next)
+    ["\t", ..] -> ("\t", next)
+    ["n", ..]  -> ("\n", next)
+    ["v", ..]  -> ("\u{b}", next)
+    ["f", ..]  -> ("\u{c}", next)
+    ["r", ..]  -> ("\r", next)
+    ["e", ..]  -> ("\u{1b}", next)
+    [" ", ..]  -> (" ", next)
+    ["\"", ..] -> ("\"", next)
+    ["/", ..]  -> ("/", next)
+    ["\\", ..] -> ("\\", next)
+    ["N", ..]  -> ("\u{85}", next)
+    ["_", ..]  -> ("\u{a0}", next)
+    ["L", ..]  -> ("\u{2028}", next)
+    ["P", ..]  -> ("\u{2029}", next)
+    ["x", ..]  -> code_point(next, 2)
+    ["u", ..]  -> code_point(next, 4)
+    ["U", ..]  -> code_point(next, 8)
+    _          -> fail SyntaxError(message: "invalid escape", offset: rest.offset)
+  }
+}
+
+fn code_point(rest: Rest, n: Int) -> (String, Rest) fails SyntaxError {
+  digits = rest.chars.take(n)
+  values = digits.filter_map(hex)
+  if values.length() != n {
+    fail SyntaxError(message: "expected #{n} hexadecimal digits", offset: rest.offset)
+  }
+  String.from_code_point(values.fold(0, |acc, d| acc * 16 + d)) match {
+    Some(c) -> (c, advance(rest, n))
+    None    -> fail SyntaxError(message: "invalid code point", offset: rest.offset)
+  }
+}
+
+fn hex(c: String) -> Option[Int] {
+  p = c.code_points().fold(0, |_, p| p)
+  if p >= 48 && p <= 57 {
+    Some(p - 48)
+  } else if p >= 97 && p <= 102 {
+    Some(p - 87)
+  } else if p >= 65 && p <= 70 {
+    Some(p - 55)
+  } else {
+    None
+  }
+}
+
+# A block sequence whose `-` is at `rest`. `reversed` holds the items read so far.
+fn sequence(rest: Rest, reversed: List[Dynamic]) -> (Dynamic, Rest) fails SyntaxError {
+  indent = rest.column
+  (item, end) = entry(advance(rest, 1), indent, False)
+  items = [item, ..reversed]
+  next = next_content(end)
+  if next.chars == [] || next.column < indent || is_marker(next, "-") || is_marker(next, ".") {
+    (Items(items.reverse()), end)
+  } else if next.column > indent {
+    fail SyntaxError(message: "unexpected indentation", offset: next.offset)
+  } else if next.chars.head() == Some("-") && is_break(next.chars.drop(1)) {
+    sequence(next, items)
+  } else {
+    # A key after a sequence that is the value of a key at the same column.
+    (Items(items.reverse()), end)
+  }
+}
+
+# The value after `- ` or `key:` of an entry indented by `indent`. On the same line, an item of
+# a sequence can be a mapping or a sequence, and the value of a key cannot. On the following
+# lines, the value is indented more, or for a key, it can also be a sequence at the same column.
+fn entry(rest: Rest, indent: Int, is_key: Bool) -> (Dynamic, Rest) fails SyntaxError {
+  start = skip_inline(rest)
+  if at_line_end(start) {
+    next = next_content(start)
+    nested = (
+      next.column > indent
+        || is_key
+          && next.column == indent
+          && next.chars.head() == Some("-")
+          && is_break(next.chars.drop(1))
+    )
+    if next.chars == [] || is_marker(next, "-") || is_marker(next, ".") || !nested {
+      (Null, start)
+    } else {
+      node(next, indent, True)
+    }
+  } else {
+    node(start, indent, !is_key)
+  }
+}
+
+# A block mapping at column `indent`, after the `:` of its key `key` at `at`.
+fn mapping(
+  at: Rest,
+  indent: Int,
+  key: String,
+  after_colon: Rest,
+  fields: Map[String, Dynamic],
+) -> (Dynamic, Rest) fails SyntaxError {
+  if fields.contains(key) {
+    fail SyntaxError(message: "repeated key: #{key}", offset: at.offset)
+  }
+  (value, end) = entry(after_colon, indent, True)
+  added = fields.insert(key, value)
+  next = next_content(end)
+  if next.chars == [] || next.column < indent || is_marker(next, "-") || is_marker(next, ".") {
+    (Fields(added), end)
+  } else if next.column > indent {
+    fail SyntaxError(message: "unexpected indentation", offset: next.offset)
+  } else {
+    next_key(next, added)
+  }
+}
+
+fn next_key(at: Rest, fields: Map[String, Dynamic]) -> (Dynamic, Rest) fails SyntaxError {
+  (scalar, after) = at.chars match {
+    ["-", ..more] if is_break(more) -> fail SyntaxError(
+      message: "expected a key",
+      offset: at.offset,
+    )
+    ["?", ..more] if is_break(more) -> fail SyntaxError(
+      message: "complex keys are not supported",
+      offset: at.offset,
+    )
+    [c, ..] if c == "[" || c == "{" -> fail SyntaxError(
+      message: "flow collections as keys are not supported",
+      offset: at.offset,
+    )
+    _ -> scalar(at, False)
+  }
+  colon = skip_spaces(after)
+  if !is_colon(colon.chars) {
+    fail SyntaxError(message: "expected `:`", offset: colon.offset)
+  }
+  mapping(at, at.column, key(scalar), advance(colon, 1), fields)
+}
+
+# A literal (`|`) or folded (`>`) block scalar whose indicator is at `rest`. Its lines are
+# indented more than `parent`, by as much as its first line that is not empty.
+fn block_scalar(rest: Rest, parent: Int, literal: Bool) -> (Dynamic, Rest) fails SyntaxError {
+  after_indicator = advance(rest, 1)
+  (chomp, after_chomp) = after_indicator.chars match {
+    ["-", ..] -> ("-", advance(after_indicator, 1))
+    ["+", ..] -> ("+", advance(after_indicator, 1))
+    _         -> ("", after_indicator)
+  }
+  after_chomp.chars match {
+    [c, ..] if c >= "1" && c <= "9" -> fail SyntaxError(
+      message: "indentation indicators are not supported",
+      offset: after_chomp.offset,
+    )
+    _ -> ()
+  }
+  header = skip_inline(after_chomp)
+  if !at_line_end(header) {
+    fail SyntaxError(message: "expected the end of the line", offset: header.offset)
+  }
+  (lines, broken, end) = block_lines(header, parent, None, [])
+  (Text(assemble(lines, broken, literal, chomp)), end)
+}
+
+# The lines of a block scalar after the line end at `rest`, with the indentation removed and
+# empty lines as "". Also whether the last line ended with a line break, and the rest at the end
+# of the last line.
+fn block_lines(
+  rest: Rest,
+  parent: Int,
+  indent: Option[Int],
+  reversed: List[String],
+) -> (List[String], Bool, Rest) {
+  start = past_line_end(rest)
+  spaces = count_spaces(start.chars, 0)
+  line = advance(start, spaces)
+  if rest.chars == [] || start.chars == [] {
+    (reversed.reverse(), rest.chars != [], start)
+  } else if at_line_end(line) {
+    extra = indent.map(|i| if spaces > i { repeat(" ", spaces - i) } else { "" }).or("")
+    block_lines(line, parent, indent, [extra, ..reversed])
+  } else {
+    width = indent.or(spaces)
+    if spaces <= parent || spaces < width || is_marker(start, "-") || is_marker(start, ".") {
+      (reversed.reverse(), True, rest)
+    } else {
+      after_indent = advance(start, width)
+      (text, end) = line_text(after_indent, [])
+      block_lines(end, parent, Some(width), [text, ..reversed])
+    }
+  }
+}
+
+fn line_text(rest: Rest, reversed: List[String]) -> (String, Rest) {
+  rest.chars match {
+    [c, ..] if !is_newline(c) -> line_text(advance(rest, 1), [c, ..reversed])
+    _                         -> (reversed.reverse().join(""), rest)
+  }
+}
+
+fn count_spaces(chars: List[String], n: Int) -> Int {
+  chars match {
+    [" ", ..more] -> count_spaces(more, n + 1)
+    _             -> n
+  }
+}
+
+fn repeat(s: String, n: Int) -> String {
+  List.range(0, n).map(|_| s).join("")
+}
+
+# Joins the lines of a block scalar. A literal scalar keeps every line break. A folded scalar
+# turns a single line break between two lines that do not start with whitespace into a space,
+# and drops the first of several. The trailing line breaks are chomped: `-` drops them, `+` keeps
+# them, and otherwise one is kept.
+fn assemble(lines: List[String], broken: Bool, literal: Bool, chomp: String) -> String {
+  (body, pending, last) = lines.fold(("", 0, ""), |(body, pending, last), line| {
+    if line == "" {
+      (body, pending + 1, last)
+    } else if last == "" {
+      ("#{body}#{repeat("\n", pending)}#{line}", 0, line)
+    } else {
+      plain = !literal && !starts_with_space(last) && !starts_with_space(line)
+      separator = if plain && pending == 0 {
+        " "
+      } else if plain {
+        repeat("\n", pending)
+      } else {
+        repeat("\n", pending + 1)
+      }
+      ("#{body}#{separator}#{line}", 0, line)
+    }
+  })
+  if last == "" {
+    if chomp == "+" { repeat("\n", pending) } else { "" }
+  } else {
+    breaks = if broken { pending + 1 } else { pending }
+    trailing = if chomp == "-" {
+      0
+    } else if chomp == "+" {
+      breaks
+    } else if breaks > 0 {
+      1
+    } else {
+      0
+    }
+    "#{body}#{repeat("\n", trailing)}"
+  }
+}
+
+fn starts_with_space(line: String) -> Bool {
+  line.starts_with(" ") || line.starts_with("\t")
+}
+
+# Whitespace, line breaks and comments inside a flow collection.
+fn skip_flow(rest: Rest) -> Rest {
+  rest.chars match {
+    [c, ..] if c == " " || c == "\t" -> skip_flow(advance(rest, 1))
+    ["#", ..] -> skip_flow(to_line_end(rest))
+    []        -> rest
+    _         -> if at_line_end(rest) { skip_flow(past_line_end(rest)) } else { rest }
+  }
+}
+
+fn flow_node(rest: Rest) -> (Dynamic, Rest) fails SyntaxError {
+  rest.chars match {
+    ["[", ..] -> flow_sequence(skip_flow(advance(rest, 1)), [])
+    ["{", ..] -> flow_mapping(skip_flow(advance(rest, 1)), Map.empty())
+    ["&", ..] -> fail SyntaxError(message: "anchors are not supported", offset: rest.offset)
+    ["*", ..] -> fail SyntaxError(message: "aliases are not supported", offset: rest.offset)
+    ["!", ..] -> fail SyntaxError(message: "tags are not supported", offset: rest.offset)
+    [c, ..] if c == "|" || c == ">" -> fail SyntaxError(
+      message: "a block scalar cannot be in a flow collection",
+      offset: rest.offset,
+    )
+    _ -> {
+      (scalar, after) = scalar(rest, True)
+      (value(scalar, rest), after)
+    }
+  }
+}
+
+# Inside `[`, at an item or `]`.
+fn flow_sequence(rest: Rest, reversed: List[Dynamic]) -> (Dynamic, Rest) fails SyntaxError {
+  rest.chars match {
+    ["]", ..] -> (Items(reversed.reverse()), advance(rest, 1))
+    []        -> fail SyntaxError(message: "unexpected end of input", offset: rest.offset)
+    _ -> {
+      (item, after) = flow_node(rest)
+      next = skip_flow(after)
+      next.chars match {
+        [",", ..] -> flow_sequence(skip_flow(advance(next, 1)), [item, ..reversed])
+        ["]", ..] -> (Items([item, ..reversed].reverse()), advance(next, 1))
+        []        -> fail SyntaxError(message: "unexpected end of input", offset: next.offset)
+        [":", ..] -> fail SyntaxError(
+          message: "a mapping in a flow sequence is not supported",
+          offset: next.offset,
+        )
+        _         -> fail SyntaxError(message: "expected `,` or `]`", offset: next.offset)
+      }
+    }
+  }
+}
+
+# Inside `{`, at a key or `}`. A key without `:` has the value null.
+fn flow_mapping(rest: Rest, fields: Map[String, Dynamic]) -> (Dynamic, Rest) fails SyntaxError {
+  rest.chars match {
+    ["}", ..] -> (Fields(fields), advance(rest, 1))
+    []        -> fail SyntaxError(message: "unexpected end of input", offset: rest.offset)
+    [c, ..] if c == "[" || c == "{" -> fail SyntaxError(
+      message: "flow collections as keys are not supported",
+      offset: rest.offset,
+    )
+    _ -> {
+      (scalar, after_key) = scalar(rest, True)
+      name = key(scalar)
+      if fields.contains(name) {
+        fail SyntaxError(message: "repeated key: #{name}", offset: rest.offset)
+      }
+      colon = skip_flow(after_key)
+      (value, after_value) = colon.chars match {
+        [":", ..] -> {
+          start = skip_flow(advance(colon, 1))
+          start.chars match {
+            [c, ..] if c == "," || c == "}" -> (Null, start)
+            _                               -> flow_node(start)
+          }
+        }
+        _ -> (Null, colon)
+      }
+      next = skip_flow(after_value)
+      added = fields.insert(name, value)
+      next.chars match {
+        [",", ..] -> flow_mapping(skip_flow(advance(next, 1)), added)
+        ["}", ..] -> (Fields(added), advance(next, 1))
+        []        -> fail SyntaxError(message: "unexpected end of input", offset: next.offset)
+        _         -> fail SyntaxError(message: "expected `,` or `}`", offset: next.offset)
+      }
+    }
+  }
+}
