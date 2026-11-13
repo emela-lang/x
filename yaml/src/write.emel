@@ -1,0 +1,127 @@
+import Dynamic.{Dynamic, Null, Bool, Number, Text, Items, Fields, Binary}
+import Base64
+import Scalar
+
+# Writes `value` in block style with an indentation of two spaces, ending with a newline. Keys
+# come in the order of the Map. Empty collections are written `[]` and `{}`.
+pub fn write(value: Dynamic) -> String {
+  lines(value).map(|line| "#{line}\n").join("")
+}
+
+# The lines of `value` without indentation.
+fn lines(value: Dynamic) -> List[String] {
+  value match {
+    Items([]) -> ["[]"]
+    Items(xs) -> xs.flat_map(|x| nest("- ", "  ", lines(x)))
+    Fields(m) -> {
+      if m.is_empty() {
+        ["{}"]
+      } else {
+        m.to_list().flat_map(|(k, x)| {
+          key = text(k, False)
+          if is_block(x) {
+            ["#{key}:", ..lines(x).map(|line| "  #{line}")]
+          } else {
+            ["#{key}: #{scalar(x)}"]
+          }
+        })
+      }
+    }
+    _         -> [scalar(value)]
+  }
+}
+
+# Prefixes the first line with `first` and the others with `others`.
+fn nest(first: String, others: String, ls: List[String]) -> List[String] {
+  ls match {
+    [head, ..tail] -> ["#{first}#{head}", ..tail.map(|line| "#{others}#{line}")]
+    []             -> []
+  }
+}
+
+fn is_block(value: Dynamic) -> Bool {
+  value match {
+    Items(xs) -> xs != []
+    Fields(m) -> !m.is_empty()
+    _         -> False
+  }
+}
+
+# A value that is written on one line.
+fn scalar(value: Dynamic) -> String {
+  value match {
+    Null      -> "null"
+    Bool(b)   -> if b { "true" } else { "false" }
+    Number(n) -> n.to_string()
+    Text(s)   -> text(s, True)
+    Binary(b) -> text(Base64.encode(b), True)
+    Items(_)  -> "[]"
+    Fields(_) -> "{}"
+  }
+}
+
+# `s` plain when that reads back as the same string, and in double quotes otherwise. A key is
+# never typed, so `resolve` is only asked for a value.
+fn text(s: String, typed: Bool) -> String {
+  chars = s.chars()
+  safe = chars match {
+    [first, ..] -> is_safe_start(first) && chars.all(is_safe)
+    []          -> False
+  }
+  if safe && !s.ends_with(" ") && (!typed || Scalar.resolve(s) == Some(Text(s))) {
+    s
+  } else {
+    quote(s)
+  }
+}
+
+fn is_safe_start(c: String) -> Bool {
+  is_word(c) || c == "/" || c == "."
+}
+
+# Characters a plain scalar can hold anywhere, in block and flow context.
+fn is_safe(c: String) -> Bool {
+  is_word(c) || "./-+=~@ ()".chars().any(|s| s == c)
+}
+
+fn is_word(c: String) -> Bool {
+  (
+    c >= "a" && c <= "z"
+      || c >= "A" && c <= "Z"
+      || c >= "0" && c <= "9"
+      || c == "_"
+      || code_point(c) >= 0xA0 && code_point(c) != 0xFEFF && code_point(c) < 0xD800
+      || code_point(c) >= 0xE000 && code_point(c) != 0xFEFF
+  )
+}
+
+fn quote(s: String) -> String {
+  "\"#{s.chars().map(escaped).join("")}\""
+}
+
+fn escaped(c: String) -> String {
+  c match {
+    "\"" -> "\\\""
+    "\\" -> "\\\\"
+    "\n" -> "\\n"
+    "\r" -> "\\r"
+    "\t" -> "\\t"
+    _ -> {
+      p = code_point(c)
+      if p < 32 || p == 127 || p == 0x85 || p == 0x2028 || p == 0x2029 || p == 0xFEFF {
+        "\\u#{hex4(p)}"
+      } else {
+        c
+      }
+    }
+  }
+}
+
+fn hex4(p: Int) -> String {
+  digits = "0123456789abcdef".chars()
+  [p / 4096, p / 256 % 16, p / 16 % 16, p % 16].map(|d| digits.get(d).or("0")).join("")
+}
+
+fn code_point(c: String) -> Int {
+  c.code_points().fold(0, |_, p| p)
+}

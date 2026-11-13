@@ -1,0 +1,197 @@
+import Std.Map
+import Dynamic.{Dynamic, Null, Bool, Text, Items, Fields}
+import Dynamic.Number
+import Lib.{SyntaxError}
+
+fn number(n: Int) -> Dynamic {
+  Dynamic.Number(Number.from_int(n))
+}
+
+fn object(fields: List[(String, Dynamic)]) -> Dynamic {
+  Fields(Map.from_list(fields))
+}
+
+@test
+fn reads_scalars_by_the_core_schema() {
+  assert Lib.parse("") == Null
+  assert Lib.parse("~") == Null
+  assert Lib.parse("null") == Null
+  assert Lib.parse("True") == Bool(True)
+  assert Lib.parse("false") == Bool(False)
+  assert Lib.parse("12") == number(12)
+  assert Lib.parse("-007") == number(-7)
+  assert Lib.parse("+3") == number(3)
+  assert Lib.parse("0x1F") == number(31)
+  assert Lib.parse("0o17") == number(15)
+  assert Lib.parse("1.5e3") == number(1500)
+  assert Lib.parse(".5") == Dynamic.Number(Number.parse("0.5"))
+  assert Lib.parse("2.") == number(2)
+  assert Lib.parse("yes") == Text("yes")
+  assert Lib.parse("1.2.3") == Text("1.2.3")
+  assert Lib.parse("hello world  # comment") == Text("hello world")
+  assert Lib.parse("a#b") == Text("a#b")
+  assert Lib.parse("-1x") == Text("-1x")
+  assert Lib.parse("http://x") == Text("http://x")
+}
+
+@test
+fn reads_quoted_scalars() {
+  assert Lib.parse("'it''s'") == Text("it's")
+  assert Lib.parse("\"12\"") == Text("12")
+  assert Lib.parse("'null'") == Text("null")
+  assert Lib.parse("\"a\\tb\\n\\\"\\\\\\u3042\\x41\\U0001F600\"") == Text("a\tb\n\"\\あA😀")
+  assert Lib.parse("\"a\n  b\n\n  c\"") == Text("a b\nc")
+  assert Lib.parse("'a  \n  b'") == Text("a b")
+  assert Lib.parse("\"a\\\n   b\"") == Text("ab")
+}
+
+@test
+fn reads_block_mappings() {
+  assert Lib.parse("a: 1\nb: x\n") == object([("a", number(1)), ("b", Text("x"))])
+  assert Lib.parse("a:\n  b:\n    c: 1\n  d: 2\ne:")
+    == object([("a", object([("b", object([("c", number(1))])), ("d", number(2))])), ("e", Null)])
+  assert Lib.parse("\"a b\": 1\n'c': 2") == object([("a b", number(1)), ("c", number(2))])
+  assert Lib.parse("1: x\ntrue: y") == object([("1", Text("x")), ("true", Text("y"))])
+  assert Lib.parse("# head\n\na: 1 # one\n\n# between\nb: 2\n")
+    == object([("a", number(1)), ("b", number(2))])
+  assert Lib.parse("url: http://x:8080/a") == object([("url", Text("http://x:8080/a"))])
+}
+
+@test
+fn reads_block_sequences() {
+  assert Lib.parse("- 1\n- a\n-\n- - x\n  - y")
+    == Items([number(1), Text("a"), Null, Items([Text("x"), Text("y")])])
+  assert Lib.parse("a:\n- 1\n- 2\nb: 3")
+    == object([("a", Items([number(1), number(2)])), ("b", number(3))])
+  assert Lib.parse("- name: a\n  port: 80\n- name: b")
+    == Items([object([("name", Text("a")), ("port", number(80))]), object([("name", Text("b"))])])
+  assert Lib.parse("-\n  a: 1") == Items([object([("a", number(1))])])
+}
+
+@test
+fn reads_flow_collections() {
+  assert Lib.parse("[]") == Items([])
+  assert Lib.parse("{}") == Fields(Map.empty())
+  assert Lib.parse("[1, a b, 'c', [d], {e: f},]")
+    == Items([number(1), Text("a b"), Text("c"), Items([Text("d")]), object([("e", Text("f"))])])
+  assert Lib.parse("{a: 1, \"b\":2, c, d:}")
+    == object([("a", number(1)), ("b", number(2)), ("c", Null), ("d", Null)])
+  assert Lib.parse("a: [1,\n  2, # two\n  3]\nb: {}")
+    == object([("a", Items([number(1), number(2), number(3)])), ("b", Fields(Map.empty()))])
+  assert Lib.parse("{a: http://x}") == object([("a", Text("http://x"))])
+}
+
+@test
+fn reads_block_scalars() {
+  assert Lib.parse("a: |\n  x\n   y\n\n  z\nb: 1")
+    == object([("a", Text("x\n y\n\nz\n")), ("b", number(1))])
+  assert Lib.parse("a: >\n  x\n  y\n\n  z\n") == object([("a", Text("x y\nz\n"))])
+  assert Lib.parse("a: >\n  x\n    y\n  z\n") == object([("a", Text("x\n  y\nz\n"))])
+  assert Lib.parse("a: |-\n  x\n\n") == object([("a", Text("x"))])
+  assert Lib.parse("a: |+\n  x\n\n") == object([("a", Text("x\n\n"))])
+  assert Lib.parse("a: |\n  x") == object([("a", Text("x"))])
+  assert Lib.parse("a: |\nb: 1") == object([("a", Text("")), ("b", number(1))])
+  assert Lib.parse("- |\n  x\n- y") == Items([Text("x\n"), Text("y")])
+  assert Lib.parse("|\n x # not a comment\n") == Text("x # not a comment\n")
+}
+
+@test
+fn reads_document_markers() {
+  assert Lib.parse("---\na: 1\n...\n") == object([("a", number(1))])
+  assert Lib.parse("--- 1") == number(1)
+  assert Lib.parse("---\n") == Null
+  assert Lib.parse("a: 1\r\nb: 2\r\n") == object([("a", number(1)), ("b", number(2))])
+}
+
+fn failure(s: String) -> (String, Int) {
+  {
+    Lib.parse(s)
+    ("", -1)
+  } escape {
+    SyntaxError(message:, offset:) -> (message, offset)
+  }
+}
+
+@test
+fn reports_where_it_fails() {
+  assert failure("a: &x 1") == ("anchors are not supported", 3)
+  assert failure("a: *x") == ("aliases are not supported", 3)
+  assert failure("!!str a") == ("tags are not supported", 0)
+  assert failure("%YAML 1.2\n---\na") == ("directives are not supported", 0)
+  assert failure("? a\n: b") == ("complex keys are not supported", 0)
+  assert failure("a: 1\n---\nb: 2") == ("more than one document is not supported", 5)
+  assert failure("a: 1\na: 2") == ("repeated key: a", 5)
+  assert failure("{a: 1, a: 2}") == ("repeated key: a", 7)
+  assert failure("a: 1\n  b: 2") == ("unexpected indentation", 7)
+  assert failure("a: b: c") == ("a mapping cannot start here", 3)
+  assert failure("a: - b") == ("a sequence cannot start here", 3)
+  assert failure("- a\nb: 1") == ("expected the end of input", 4)
+  assert failure("a: 1\n- b") == ("expected a key", 5)
+  assert failure("a: 1\nb") == ("expected `:`", 6)
+  assert failure("a\nb") == ("expected the end of input", 2)
+  assert failure("a: .inf") == ("infinity and NaN are not supported", 3)
+  assert failure("a: |2\n  x") == ("indentation indicators are not supported", 4)
+  assert failure("\ta: 1") == ("tabs cannot indent", 0)
+  assert failure("[1, 2") == ("unexpected end of input", 5)
+  assert failure("[1 [2]]") == ("expected `,` or `]`", 3)
+  assert failure("{a: 1 [b]}") == ("expected `,` or `}`", 6)
+  assert failure("'abc") == ("unterminated string", 4)
+  assert failure("\"\\q\"") == ("invalid escape", 2)
+  assert failure("[a]x") == ("expected the end of the line", 3)
+  assert failure("\"a\" b") == ("expected the end of the line", 4)
+}
+
+@test
+fn reads_a_workflow() {
+  text = "name: tag\non:\n  push:\n    branches: [main]\n  workflow_dispatch:\n\njobs:\n  tag:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n        with:\n          fetch-depth: 0\n\n      - name: Tag\n        run: |\n          set -eu\n          echo \"$tag\"\n"
+  assert Lib.parse(text)
+    == object(
+      [
+        ("name", Text("tag")),
+        (
+          "on",
+          object(
+            [("push", object([("branches", Items([Text("main")]))])), ("workflow_dispatch", Null)],
+          ),
+        ),
+        (
+          "jobs",
+          object(
+            [
+              (
+                "tag",
+                object(
+                  [
+                    ("runs-on", Text("ubuntu-latest")),
+                    (
+                      "steps",
+                      Items(
+                        [
+                          object(
+                            [
+                              ("uses", Text("actions/checkout@v4")),
+                              ("with", object([("fetch-depth", number(0))])),
+                            ],
+                          ),
+                          object(
+                            [("name", Text("Tag")), ("run", Text("set -eu\necho \"$tag\"\n"))],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    )
+}
+
+@test
+fn counts_offsets_in_code_points() {
+  assert failure("a: 1\r\n  b: 2") == ("unexpected indentation", 8)
+  assert Lib.parse("'e\u{301}'") == Text("e\u{301}")
+  assert failure("\"e\u{301}\" x") == ("expected the end of the line", 5)
+}

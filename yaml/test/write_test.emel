@@ -1,0 +1,71 @@
+import Std.Map
+import Std.Bytes
+import Dynamic.{Dynamic, Null, Bool, Text, Items, Fields, Binary}
+import Dynamic.Number
+import Lib
+
+fn number(n: Int) -> Dynamic {
+  Dynamic.Number(Number.from_int(n))
+}
+
+fn object(fields: List[(String, Dynamic)]) -> Dynamic {
+  Fields(Map.from_list(fields))
+}
+
+@test
+fn writes_scalars() {
+  assert Lib.to_string(Null) == "null\n"
+  assert Lib.to_string(Bool(True)) == "true\n"
+  assert Lib.to_string(number(-12)) == "-12\n"
+  assert Lib.to_string(Text("hello world")) == "hello world\n"
+  assert Lib.to_string(Text("あいう")) == "あいう\n"
+}
+
+@test
+fn quotes_strings_that_would_read_differently() {
+  assert Lib.to_string(Text("")) == "\"\"\n"
+  assert Lib.to_string(Text("12")) == "\"12\"\n"
+  assert Lib.to_string(Text("true")) == "\"true\"\n"
+  assert Lib.to_string(Text("null")) == "\"null\"\n"
+  assert Lib.to_string(Text(".inf")) == "\".inf\"\n"
+  assert Lib.to_string(Text("a: b")) == "\"a: b\"\n"
+  assert Lib.to_string(Text("- a")) == "\"- a\"\n"
+  assert Lib.to_string(Text("a #b")) == "\"a #b\"\n"
+  assert Lib.to_string(Text(" a")) == "\" a\"\n"
+  assert Lib.to_string(Text("a\n\"b\"\t")) == "\"a\\n\\\"b\\\"\\t\"\n"
+  assert Lib.to_string(Text("\u{1}")) == "\"\\u0001\"\n"
+}
+
+@test
+fn writes_collections_in_block_style() {
+  assert Lib.to_string(Items([])) == "[]\n"
+  assert Lib.to_string(Fields(Map.empty())) == "{}\n"
+  assert Lib.to_string(Items([number(1), Items([Text("a"), Text("b")]), Items([])]))
+    == "- 1\n- - a\n  - b\n- []\n"
+  assert Lib.to_string(
+    object([("a", object([("b", number(1)), ("c", Items([Null]))])), ("1", Fields(Map.empty()))]),
+  )
+    == "1: {}\na:\n  b: 1\n  c:\n    - null\n"
+  assert Lib.to_string(Items([object([("x", number(1)), ("y", number(2))])])) == "- x: 1\n  y: 2\n"
+}
+
+@test
+fn writes_binary_as_base64() {
+  assert Lib.to_string(Binary(Bytes.from_list([0, 1, 255]).or(Bytes.empty()))) == "AAH/\n"
+}
+
+@test
+fn reads_back_what_it_writes() {
+  values = [
+    Text("a\nb"),
+    Text("it's"),
+    Text("0x10"),
+    Text("~"),
+    Text("[a]"),
+    object([("k:v", Text("#")), ("", Items([Fields(Map.empty()), Text("")]))]),
+    Items([Items([object([("a", Items([number(1)]))])])]),
+  ]
+  values.map(|v| {
+    assert Lib.parse(Lib.to_string(v)) == v
+  })
+}

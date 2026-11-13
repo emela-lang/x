@@ -1,0 +1,127 @@
+# The YAML 1.2 core schema, which gives a plain scalar its type.
+
+import Dynamic.{Dynamic, Null, Bool, Number, Text}
+import Dynamic.Number
+
+## What a plain scalar is in the core schema. `None` for `.inf`, `-.inf` and `.nan`, which no
+## Number can hold.
+pub fn resolve(s: String) -> Option[Dynamic] {
+  if ["", "~", "null", "Null", "NULL"].any(|t| t == s) {
+    Some(Null)
+  } else if ["true", "True", "TRUE"].any(|t| t == s) {
+    Some(Bool(True))
+  } else if ["false", "False", "FALSE"].any(|t| t == s) {
+    Some(Bool(False))
+  } else if is_special(s) {
+    None
+  } else {
+    Some(number(s.chars()).map(|n| Number(n)).or(Text(s)))
+  }
+}
+
+# `.inf`, `-.inf` and `.nan` in their three spellings.
+fn is_special(s: String) -> Bool {
+  body = s.chars() match {
+    [sign, ..rest] if sign == "-" || sign == "+" -> rest.join("")
+    _                                            -> s
+  }
+  [".inf", ".Inf", ".INF"].any(|t| t == body) || [".nan", ".NaN", ".NAN"].any(|t| t == s)
+}
+
+fn number(chars: List[String]) -> Option[Number.Number] {
+  chars match {
+    ["0", "x", ..digits] -> radix(digits, 16)
+    ["0", "o", ..digits] -> radix(digits, 8)
+    ["-", ..rest]        -> decimal("-", rest)
+    ["+", ..rest]        -> decimal("", rest)
+    _                    -> decimal("", chars)
+  }
+}
+
+# `[0-9]+`, `0x[0-9a-fA-F]+` and `0o[0-7]+` with at most 63 bits, which Int64 holds.
+fn radix(digits: List[String], base: Int) -> Option[Number.Number] {
+  values = digits.filter_map(|c| digit(c, base))
+  bits = if base == 16 { 4 } else { 3 }
+  if digits == [] || values.length() != digits.length() || values.length() * bits > 63 {
+    None
+  } else {
+    Some(
+      Number.from_int64(
+        values.fold(0, |acc: Int64, d| acc * Int64.from_int(base) + Int64.from_int(d)),
+      ),
+    )
+  }
+}
+
+fn digit(c: String, base: Int) -> Option[Int] {
+  p = c.code_points().fold(0, |_, p| p)
+  value = if p >= 48 && p <= 57 {
+    p - 48
+  } else if p >= 97 && p <= 102 {
+    p - 87
+  } else if p >= 65 && p <= 70 {
+    p - 55
+  } else {
+    99
+  }
+  if value < base { Some(value) } else { None }
+}
+
+# `[-+]?(\.[0-9]+|[0-9]+(\.[0-9]*)?)([eE][-+]?[0-9]+)?`, rewritten into the grammar of
+# `Number.parse`: without leading zeros, with a digit on each side of the point.
+fn decimal(sign: String, chars: List[String]) -> Option[Number.Number] {
+  (whole, after_whole) = span_digits(chars)
+  (fraction, after_fraction, point) = after_whole match {
+    [".", ..rest] -> {
+      (fraction, after) = span_digits(rest)
+      (fraction, after, True)
+    }
+    _ -> ([], after_whole, False)
+  }
+  exponent_ok = after_fraction match {
+    [] -> True
+    [e, ..rest] if e == "e" || e == "E" -> {
+      digits = rest match {
+        [s, ..more] if s == "-" || s == "+" -> more
+        _                                   -> rest
+      }
+      digits != [] && digits.all(is_digit)
+    }
+    _  -> False
+  }
+  if whole == [] && fraction == [] || !exponent_ok || whole == [] && !point {
+    None
+  } else {
+    integer = drop_zeros(whole) match {
+      [] -> "0"
+      ds -> String.concat(ds)
+    }
+    tail = if fraction == [] { "" } else { ".#{String.concat(fraction)}" }
+    text = "#{sign}#{integer}#{tail}#{String.concat(after_fraction)}"
+    Some(Number.parse(text)) escape {
+      ParseError(..) -> None
+    }
+  }
+}
+
+fn span_digits(chars: List[String]) -> (List[String], List[String]) {
+  span_digits_from(chars, [])
+}
+
+fn span_digits_from(chars: List[String], reversed: List[String]) -> (List[String], List[String]) {
+  chars match {
+    [c, ..rest] if is_digit(c) -> span_digits_from(rest, [c, ..reversed])
+    _                          -> (reversed.reverse(), chars)
+  }
+}
+
+fn drop_zeros(digits: List[String]) -> List[String] {
+  digits match {
+    ["0", ..rest] -> drop_zeros(rest)
+    _             -> digits
+  }
+}
+
+fn is_digit(c: String) -> Bool {
+  c >= "0" && c <= "9"
+}
