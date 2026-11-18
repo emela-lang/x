@@ -2,11 +2,17 @@ name: tag
 
 # main に入った各 Pome の version から <dir>/v<version> の tag を打つ．
 # 既にある tag は飛ばすので，version を上げていない Pome には何もしない．
+# 打った tag は proxy に取り込ませ，pkgs.emela.dev に載せる．
 on:
   push:
     branches: [main]
     paths: ["*/Pome.toml"]
   workflow_dispatch:
+    inputs:
+      all:
+        description: 打ってある tag をすべて proxy に取り込ませる
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -41,3 +47,31 @@ jobs:
           if [ ${#new[@]} -gt 0 ]; then
             git push --atomic origin "${new[@]}"
           fi
+          printf '%s\n' "${new[@]}" > "$RUNNER_TEMP/new-tags"
+
+      # proxy（pomes.emela.dev）は，ない版の .info を求められたときに git から取り込み，sumdb に記録する．
+      # pkgs.emela.dev の索引はその記録から作られるので，tag を打っただけでは載らない．打った tag を
+      # ここで一度取りに行き，取り込ませる．取り込んだ版は sumdb から消せず，同じ版の tag は打ち直せない．
+      # workflow_dispatch で all を true にすると，打ってある tag をすべて取りに行く（取り込み済みの版はそのまま返る）．
+      - name: Ingest the new versions into the proxy
+        env:
+          ALL: ${{ github.event_name == 'workflow_dispatch' && inputs.all }}
+        run: |
+          set -euo pipefail
+          if [ "$ALL" = "true" ]; then
+            git tag --list '*/v*' > "$RUNNER_TEMP/new-tags"
+          fi
+          failed=0
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            dir=${tag%/v*}
+            version=${tag##*/}
+            url="https://pomes.emela.dev/github.com/emela-lang/x/$dir/@v/$version.info"
+            if curl -fsS --retry 3 --retry-delay 10 --retry-all-errors -o /dev/null "$url"; then
+              echo "::notice::$tag を取り込んだ"
+            else
+              echo "::error::$tag を取り込めなかった（$url）"
+              failed=1
+            fi
+          done < "$RUNNER_TEMP/new-tags"
+          exit "$failed"
