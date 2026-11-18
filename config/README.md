@@ -3,14 +3,15 @@
 環境変数から型の付いた設定 record を読む．読む変数の名前は record の `Shape`（`Std.Shape`）から決め，値は `Std.Dynamic` の `Decode.from_dynamic_all` で読む．
 
 ```emela
+import Std.Dynamic.{Decode}
 import Std.Process.{Process}
+import Std.Shape.{Shaped}
 import Config
 import Config.DotEnv.{DotEnv}
 import Redacted.{Redacted}
 
 type AppConfig(port: Int, debug: Bool, database_url: Redacted[String], log_level: Option[String])
-
-# impl AppConfig: Shaped と impl AppConfig: Decode は手で書く（test/config_test.emel）
+  derive Shaped, Decode
 
 with Process {
   with DotEnv(path: ".env") {
@@ -57,7 +58,7 @@ APP_PORT: expected number, found text; APP_DATABASE_URL: is not set
 
 ## 秘密値
 
-`Redacted[String]` のフィールドは，ほかのフィールドと同じく `Shaped.shape_in` と `Decode.from_dynamic` で書ける．impl は x/redacted v0.6.0 にある．
+`Redacted[String]` のフィールドがあっても，`derive Shaped, Decode` でそのまま読める．`Redacted` の impl は x/redacted v0.6.0 にある．
 
 - `Redacted` は `Show` で `<redacted>` と出るので，設定 record をログに出しても値は出ない
 - `Redacted` の `Decode` は，失敗したときの `DecodeError` にも値を残さない
@@ -83,7 +84,7 @@ APP_PORT: expected number, found text; APP_DATABASE_URL: is not set
 
 ## .env.example
 
-`Config.example(shape, prefix)` は，各変数に型と `description` の注記を書いた `.env.example` の中身を返す．`Option` の変数はコメントアウトしておく．
+`Config.example(shape, prefix)` は，各変数に型と `description` の注記を書いた `.env.example` の中身を返す．`Option` の変数はコメントアウトしておく．`derive Shaped` は注記を付けないので，`description` を書くなら `Shaped` の impl を手で書く（test/config_test.emel）．
 
 ```
 # Int: the port to listen on
