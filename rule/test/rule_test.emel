@@ -1,0 +1,93 @@
+import Std.Dynamic.{Number}
+import Std.Dynamic.Number
+import Lib.{Rule, Broken, AllBroken}
+import Std.Shape
+import Std.Shape.{Int, String, List, Annotated, Named, Record, Field}
+
+const QUANTITY: List[Rule[Int]] = [Lib.at_least(1), Lib.at_most(99)]
+
+## A number of items, checked by its constructor.
+type Quantity(value: Int)
+
+error InvalidQuantity(given: Int, reason: String) derive Show
+
+fn quantity(n: Int) -> Quantity fails InvalidQuantity {
+  Quantity(
+    value: Lib.check_or(n, QUANTITY, |rule| {
+      InvalidQuantity(given: n, reason: rule.message())
+    }),
+  )
+}
+
+fn even() -> Rule[Int] {
+  Lib.custom("an even number", |n| n % 2 == 0)
+}
+
+fn number(n: Int) -> Dynamic.Dynamic {
+  Number(Number.from_int(n))
+}
+
+@test
+fn check_fails_with_the_first_broken_rule() {
+  assert Lib.check(5, QUANTITY) == 5
+  assert (Lib.check(0, QUANTITY).to_string() escape { Broken(message:) -> message }) == "at least 1"
+  assert (Lib.check(100, QUANTITY).to_string() escape { Broken(message:) -> message })
+    == "at most 99"
+}
+
+@test
+fn check_all_lists_every_broken_rule() {
+  rules = [Lib.at_least(10), even()]
+  assert Lib.check_all(12, rules) == 12
+  assert (Lib.check_all(3, rules) |> (|_| []) escape { AllBroken(messages:) -> messages })
+    == ["at least 10", "an even number"]
+}
+
+@test
+fn check_or_fails_with_an_error_of_your_own() {
+  assert quantity(3).value == 3
+  assert (quantity(0).value.to_string() escape {
+    InvalidQuantity(given:, reason:) -> "#{given}: #{reason}"
+  })
+    == "0: at least 1"
+}
+
+@test
+fn check_all_or_gets_every_broken_rule() {
+  rules = [Lib.at_least(10), even()]
+  count = Lib.check_all_or(3, rules, |broken| {
+    Broken(message: "#{broken.length()} rules")
+  }).to_string() escape {
+    Broken(message:) -> message
+  }
+  assert count == "2 rules"
+}
+
+@test
+fn broken_lists_without_failing() {
+  rules = [Lib.at_least(10), even(), Lib.at_most(99)]
+  assert Lib.broken(3, rules).map(Lib.message) == ["at least 10", "an even number"]
+  assert Lib.broken(12, rules).is_empty()
+}
+
+@test
+fn a_length_counts_code_points() {
+  assert Lib.check("東京", [Lib.min_length(2), Lib.max_length(2)]) == "東京"
+  # One grapheme cluster of five code points: too long for a length of 1.
+  family = "👨‍👩‍👧"
+  assert Lib.broken(family, [Lib.max_length(1)]).length() == 1
+}
+
+@test
+fn items_are_counted() {
+  rules: List[Rule[List[Int]]] = [Lib.min_items(1), Lib.max_items(2)]
+  assert Lib.broken([], rules).map(Lib.message) == ["at least 1 items"]
+  assert Lib.broken([1, 2], rules).is_empty()
+}
+
+@test
+fn the_shape_carries_the_notes_of_the_rules() {
+  assert Lib.annotate(Int, QUANTITY)
+    == Annotated(shape: Int, notes: [("minimum", number(1)), ("maximum", number(99))])
+  assert Lib.annotate(Int, [even()]) == Int
+}
