@@ -1,6 +1,6 @@
 import Std.Map.{Map}
-import Dynamic.{Dynamic, Null, Bool, Number, Text, Items, Fields, Binary}
-import Dynamic.Number
+import Std.Dynamic.{Dynamic, Null, Bool, Number, Text, Items, Fields, Binary}
+import Std.Dynamic.Number
 import Base64
 
 pub error Unwritable(message: String)

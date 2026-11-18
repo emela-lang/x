@@ -1,8 +1,8 @@
 # Run with Bun: `EMELA_NODE=bun emela test`.
 
 import Std.Bytes.{Bytes}
-import Dynamic.{Dynamic, Decode, DecodeErrors, Text, Bool, Items, Binary}
-import Dynamic.Number
+import Std.Dynamic.{Dynamic, Decode, DecodeErrors, Text, Bool, Items, Binary}
+import Std.Dynamic.Number
 import Sql
 import Sql.{Sql, SqlError, Statement}
 import Sqlite.{BunSqlite, BunSqliteTransaction}

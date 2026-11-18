@@ -1,7 +1,7 @@
 # The YAML 1.2 core schema, which gives a plain scalar its type.
 
-import Dynamic.{Dynamic, Null, Bool, Number, Text}
-import Dynamic.Number
+import Std.Dynamic.{Dynamic, Null, Bool, Number, Text}
+import Std.Dynamic.Number
 
 ## What a plain scalar is in the core schema. `None` for `.inf`, `-.inf` and `.nan`, which no
 ## Number can hold.

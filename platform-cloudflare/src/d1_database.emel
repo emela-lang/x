@@ -12,9 +12,9 @@
 # mistaken for another value.
 
 import Std.Bytes.{Bytes}
-import Dynamic.{Dynamic, Number, Text, Items, Fields, Binary}
-import Dynamic.Number.{OutOfRange}
-import Json.{SyntaxError}
+import Std.Dynamic.{Dynamic, Number, Text, Items, Fields, Binary}
+import Std.Dynamic.Number.{OutOfRange}
+import Std.Json.{SyntaxError}
 import Sql
 import Sql.{Sql, SqlError, Statement}
 

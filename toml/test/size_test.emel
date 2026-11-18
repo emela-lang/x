@@ -1,5 +1,5 @@
 import Std.Map
-import Dynamic.{Fields, Items, Text}
+import Std.Dynamic.{Fields, Items, Text}
 import Lib
 
 @test

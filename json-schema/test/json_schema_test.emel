@@ -1,0 +1,164 @@
+import Std.Dynamic.{Number, Text}
+import Std.Dynamic.Number
+import Std.Json
+import Std.Shape
+import Std.Shape.{
+  Shape,
+  Shaped,
+  Field,
+  Variant,
+  NoFields,
+  PositionalFields,
+  NamedFields,
+  Int,
+  Float,
+  String,
+  Bytes,
+  List,
+  Option,
+  Map,
+  Record,
+  Variants,
+  Ref,
+  Named,
+}
+import Lib
+import Rule
+import Rule.{Rule}
+
+fn schema_text(shape: Shape) -> String {
+  Json.to_string(Lib.document(shape))
+}
+
+@test
+fn a_value_type_has_no_defs() {
+  assert schema_text(List(String))
+    == "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"items\":{\"type\":\"string\"},\"type\":\"array\"}"
+}
+
+@test
+fn bytes_are_a_string_of_base64() {
+  assert schema_text(Bytes)
+    == "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"contentEncoding\":\"base64\",\"type\":\"string\"}"
+}
+
+@test
+fn an_option_field_is_not_required() {
+  shape = Record(
+    name: "Member",
+    fields: [
+      Field(name: "name", shape: String),
+      Field(name: "nick", shape: Option(String)),
+      Field(name: "score", shape: Float),
+    ],
+  )
+  assert schema_text(shape)
+    == "{\"$defs\":{\"Member\":{\"properties\":{\"name\":{\"type\":\"string\"},\"nick\":{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]},\"score\":{\"type\":\"number\"}},\"required\":[\"name\",\"score\"],\"type\":\"object\"}},\"$ref\":\"#/$defs/Member\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"
+}
+
+@test
+fn notes_become_keywords() {
+  shape = Int |> Shape.annotate("minimum", Number(Number.from_int(1)))
+  assert schema_text(shape)
+    == "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"minimum\":1,\"type\":\"integer\"}"
+}
+
+@test
+fn an_enum_is_a_tag_and_a_value() {
+  shape = Variants(
+    name: "Tree",
+    variants: [
+      Variant(name: "Leaf", contents: NoFields),
+      Variant(name: "Pair", contents: PositionalFields([Int, Int])),
+      Variant(
+        name: "Node",
+        contents: NamedFields(
+          [Field(name: "left", shape: Ref("Tree")), Field(name: "right", shape: Ref("Tree"))],
+        ),
+      ),
+    ],
+  )
+  assert schema_text(shape)
+    == "{\"$defs\":{\"Tree\":{\"oneOf\":[{\"properties\":{\"tag\":{\"const\":\"Leaf\"}},\"required\":[\"tag\"],\"type\":\"object\"},{\"properties\":{\"tag\":{\"const\":\"Pair\"},\"value\":{\"maxItems\":2,\"minItems\":2,\"prefixItems\":[{\"type\":\"integer\"},{\"type\":\"integer\"}],\"type\":\"array\"}},\"required\":[\"tag\",\"value\"],\"type\":\"object\"},{\"properties\":{\"tag\":{\"const\":\"Node\"},\"value\":{\"properties\":{\"left\":{\"$ref\":\"#/$defs/Tree\"},\"right\":{\"$ref\":\"#/$defs/Tree\"}},\"required\":[\"left\",\"right\"],\"type\":\"object\"}},\"required\":[\"tag\",\"value\"],\"type\":\"object\"}]}},\"$ref\":\"#/$defs/Tree\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"
+}
+
+@test
+fn a_record_used_twice_is_defined_once() {
+  member = Record(name: "Member", fields: [Field(name: "name", shape: String)])
+  shape = Map(key: String, value: List(member))
+  assert schema_text(
+    Record(
+      name: "Team",
+      fields: [Field(name: "lead", shape: member), Field(name: "groups", shape: shape)],
+    ),
+  )
+    == "{\"$defs\":{\"Member\":{\"properties\":{\"name\":{\"type\":\"string\"}},\"required\":[\"name\"],\"type\":\"object\"},\"Team\":{\"properties\":{\"groups\":{\"additionalProperties\":{\"items\":{\"$ref\":\"#/$defs/Member\"},\"type\":\"array\"},\"type\":\"object\"},\"lead\":{\"$ref\":\"#/$defs/Member\"}},\"required\":[\"lead\",\"groups\"],\"type\":\"object\"}},\"$ref\":\"#/$defs/Team\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"
+}
+
+@test
+fn generic_records_are_defined_by_their_full_names() {
+  page = |item: Shape| {
+    Record(
+      name: Shape.generic_name("Page", [item]),
+      fields: [Field(name: "items", shape: List(item))],
+    )
+  }
+  member = Record(name: "Member", fields: [])
+  shape = Record(
+    name: "Both",
+    fields: [Field(name: "a", shape: page(member)), Field(name: "b", shape: page(Int))],
+  )
+  assert schema_text(shape)
+    == "{\"$defs\":{\"Both\":{\"properties\":{\"a\":{\"$ref\":\"#/$defs/Page%5BMember%5D\"},\"b\":{\"$ref\":\"#/$defs/Page%5BInt%5D\"}},\"required\":[\"a\",\"b\"],\"type\":\"object\"},\"Member\":{\"properties\":{},\"required\":[],\"type\":\"object\"},\"Page[Int]\":{\"properties\":{\"items\":{\"items\":{\"type\":\"integer\"},\"type\":\"array\"}},\"required\":[\"items\"],\"type\":\"object\"},\"Page[Member]\":{\"properties\":{\"items\":{\"items\":{\"$ref\":\"#/$defs/Member\"},\"type\":\"array\"}},\"required\":[\"items\"],\"type\":\"object\"}},\"$ref\":\"#/$defs/Both\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"
+}
+
+@test
+fn a_named_shape_is_defined_once_with_its_notes() {
+  code = Named(
+    name: "Code",
+    shape: String |> Rule.annotate([Rule.min_length(3)]) |> Shape.format("x-code"),
+  )
+  shape = Record(
+    name: "Pair",
+    fields: [Field(name: "a", shape: code), Field(name: "b", shape: code.description("b"))],
+  )
+  assert schema_text(shape)
+    == "{\"$defs\":{\"Code\":{\"format\":\"x-code\",\"minLength\":3,\"type\":\"string\"},\"Pair\":{\"properties\":{\"a\":{\"$ref\":\"#/$defs/Code\"},\"b\":{\"$ref\":\"#/$defs/Code\",\"description\":\"b\"}},\"required\":[\"a\",\"b\"],\"type\":\"object\"}},\"$ref\":\"#/$defs/Pair\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"
+}
+
+@test
+fn lengths_of_a_list_are_counts_of_items() {
+  shape = List(Int)
+    |> Rule.annotate([Rule.min_items(1), Rule.max_items(5)])
+    |> Shape.annotate("x-note", Text("kept"))
+  assert schema_text(shape)
+    == "{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"items\":{\"type\":\"integer\"},\"maxItems\":5,\"minItems\":1,\"type\":\"array\",\"x-note\":\"kept\"}"
+}
+
+@test
+fn types_that_refer_to_each_other_are_both_defined() {
+  member = Record(name: "Member", fields: [Field(name: "team", shape: Option(Ref("Team")))])
+  team = Record(name: "Team", fields: [Field(name: "lead", shape: member)])
+  assert schema_text(team)
+    == "{\"$defs\":{\"Member\":{\"properties\":{\"team\":{\"anyOf\":[{\"$ref\":\"#/$defs/Team\"},{\"type\":\"null\"}]}},\"required\":[],\"type\":\"object\"},\"Team\":{\"properties\":{\"lead\":{\"$ref\":\"#/$defs/Member\"}},\"required\":[\"lead\"],\"type\":\"object\"}},\"$ref\":\"#/$defs/Team\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"
+}
+
+const QUANTITY: List[Rule[Int]] = [Rule.at_least(1), Rule.at_most(99)]
+
+@test
+fn json_schema_reads_the_same_rules() {
+  name_rules = [Rule.min_length(1), Rule.max_length(20)]
+  shape = Record(
+    name: "Line",
+    fields: [
+      Field(name: "name", shape: String |> Rule.annotate(name_rules)),
+      Field(
+        name: "quantity",
+        shape: Named(name: "Quantity", shape: Int |> Rule.annotate(QUANTITY)),
+      ),
+      Field(name: "tags", shape: List(String) |> Rule.annotate([Rule.max_items(3)])),
+    ],
+  )
+  assert Json.to_string(Lib.document(shape))
+    == "{\"$defs\":{\"Line\":{\"properties\":{\"name\":{\"maxLength\":20,\"minLength\":1,\"type\":\"string\"},\"quantity\":{\"$ref\":\"#/$defs/Quantity\"},\"tags\":{\"items\":{\"type\":\"string\"},\"maxItems\":3,\"type\":\"array\"}},\"required\":[\"name\",\"quantity\",\"tags\"],\"type\":\"object\"},\"Quantity\":{\"maximum\":99,\"minimum\":1,\"type\":\"integer\"}},\"$ref\":\"#/$defs/Line\",\"$schema\":\"https://json-schema.org/draft/2020-12/schema\"}"
+}

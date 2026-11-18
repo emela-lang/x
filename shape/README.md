@@ -1,5 +1,13 @@
 # shape
 
+emela 0.28 から，この Pome の中身は 3 つに分かれた．新しく使わない．
+
+- `Shape` 型，`Shaped` trait，組み込み型の impl，注記の関数は std の `Std.Shape` に移った．自分の型の `Shaped` は `derive Shaped` で作る
+- `Shape.Rule` は [`x/rule`](../rule) に移った（`import Rule`）
+- `Shape.JsonSchema` は [`x/json-schema`](../json-schema) に移った（`import JsonSchema`）
+
+公開済みの tag を使っているコードのために，このディレクトリは v0.4 のまま残している．以下は v0.4 の説明．
+
 型の形（フィールド，variant，中の型）を，値なしで取り出す．`Dynamic` が 1 つの値の中身なのに対して，`Shape` はその型のすべての値を説明する．JSON Schema，OpenAPI，ルーターの照合を，値が届く前に組み立てられる．
 
 ```emela

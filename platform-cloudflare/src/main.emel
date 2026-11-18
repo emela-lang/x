@@ -12,7 +12,7 @@ import Platform.{CloudflarePlatform}
 import Kv.{Kv}
 import Sql
 import Sql.{Sql, SqlError}
-import Dynamic.{Dynamic, Decode, DecodeErrors, Text}
+import Std.Dynamic.{Dynamic, Decode, DecodeErrors, Text}
 import Std.Console.{Console}
 import Std.Env.{Env}
 import Std.Http

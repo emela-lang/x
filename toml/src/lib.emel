@@ -1,6 +1,6 @@
 import Std.Map.{Map}
-import Dynamic.{Dynamic, Decode, Encode, DecodeError, Bool, Number, Text, Items, Fields}
-import Dynamic.Number
+import Std.Dynamic.{Dynamic, Decode, Encode, DecodeError, Bool, Number, Text, Items, Fields}
+import Std.Dynamic.Number
 import Write.{Unwritable}
 
 ## `offset` counts code points from the start of the input.

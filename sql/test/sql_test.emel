@@ -2,8 +2,8 @@ import Std.State.{State}
 import Std.Cause.{Die}
 import Std.Exit.{Success, Failure}
 import Std.Bytes.{Bytes}
-import Dynamic.{Dynamic, Decode, DecodeErrors, Text, Bool, Items, Binary}
-import Dynamic.Number
+import Std.Dynamic.{Dynamic, Decode, DecodeErrors, Text, Bool, Items, Binary}
+import Std.Dynamic.Number
 import Lib.{
   Sql,
   SqlError,

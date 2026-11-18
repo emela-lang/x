@@ -5,7 +5,7 @@
 
 import Std.Bytes
 import Std.Map.{Map}
-import Dynamic.{
+import Std.Dynamic.{
   Dynamic,
   Decode,
   DecodeError,
@@ -18,8 +18,8 @@ import Dynamic.{
   Fields,
   Binary,
 }
-import Dynamic.Number
-import Shape.{Shaped}
+import Std.Dynamic.Number
+import Std.Shape.{Shaped}
 
 pub opaque type Redacted[A](value: A)
 
