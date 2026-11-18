@@ -1,10 +1,10 @@
 # Env from a `.env` file, under the environment of the process.
 #
 # ```emela
-# import Std.Platform.{Platform}
+# import Std.Process.{Process}
 # import Config.DotEnv.{DotEnv}
 #
-# with Platform {
+# with Process {
 #   with DotEnv(path: ".env") { Config.load("APP_") }
 # }
 # ```

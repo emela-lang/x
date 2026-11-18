@@ -3,7 +3,7 @@
 環境変数から型の付いた設定 record を読む．読む変数の名前は record の `Shape`（x/shape）から決め，値は x/dynamic の `Decode.from_dynamic_all` で読む．
 
 ```emela
-import Std.Platform.{Platform}
+import Std.Process.{Process}
 import Config
 import Config.DotEnv.{DotEnv}
 import Redacted.{Redacted}
@@ -12,7 +12,7 @@ type AppConfig(port: Int, debug: Bool, database_url: Redacted[String], log_level
 
 # impl AppConfig: Shaped と impl AppConfig: Decode は手で書く（test/config_test.emel）
 
-with Platform {
+with Process {
   with DotEnv(path: ".env") {
     config: AppConfig = Config.load("APP_") # fails ConfigError
     serve(config)
@@ -68,7 +68,7 @@ APP_PORT: expected number, found text; APP_DATABASE_URL: is not set
 `DotEnv(path)` は `.env` を読んで `Env` を提供する handler．`with` に入るときに `FileSystem.read_text` で 1 回だけ読む．
 
 - 外側の `Env` にある変数を優先し，`.env` はそこにない変数だけを埋める
-- 外側の `Env` は外側の `with` から取る．同じ `with` に並べた `Env` は見えないので，`with Platform { with DotEnv(path: ".env") { ... } }` と入れ子にする
+- 外側の `Env` は外側の `with` から取る．同じ `with` に並べた `Env` は見えないので，`with Process { with DotEnv(path: ".env") { ... } }` と入れ子にする
 - ファイルがなければ空として扱う．本番で `.env` を置かずに同じプログラムを動かせる
 - `DotEnv.parse(path, text)` で中身だけを読める
 
