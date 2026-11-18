@@ -46,14 +46,7 @@ fn parse_count(s: String) -> Option[Int] {
   Some(Int.parse(s)) escape { ParseError(_) -> None }
 }
 
-type Note(body: String)
-
-# What `derive Decode` is meant to generate.
-impl Note: Decode {
-  fn from_dynamic(d) {
-    Note(body: d.field("body", Decode.from_dynamic))
-  }
-}
+type Note(body: String) derive Decode
 
 fn notes() -> Response fails SqlError | DecodeErrors uses { Sql } {
   found: List[Note] = Sql.all("select body from notes order by id", [])

@@ -1,20 +1,8 @@
-import Std.Dynamic.{Dynamic, Decode, Encode, DecodeError, Text, Items}
+import Std.Dynamic.{Decode, Encode, DecodeError}
 import Lib.{SyntaxError}
 
 type User(name: String, tags: List[String])
-  derive Eq
-
-impl User: Encode {
-  fn to_dynamic(self) {
-    Dynamic.object([("name", Text(self.name)), ("tags", Items(self.tags.map(|t| Text(t))))])
-  }
-}
-
-impl User: Decode {
-  fn from_dynamic(d) {
-    User(name: d.field("name", Dynamic.string), tags: d.field("tags", Dynamic.list(Dynamic.string)))
-  }
-}
+  derive Eq, Encode, Decode
 
 @test
 fn encodes() {

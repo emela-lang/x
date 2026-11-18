@@ -34,14 +34,7 @@ fn route(request: Request) -> Response fails SqlError | DecodeErrors uses { Sql 
   }
 }
 
-type Note(body: String)
-
-# What `derive Decode` is meant to generate.
-impl Note: Decode {
-  fn from_dynamic(d) {
-    Note(body: d.field("body", Decode.from_dynamic))
-  }
-}
+type Note(body: String) derive Decode
 
 fn answer(run: fn() -> Response fails SqlError | DecodeErrors uses { Sql }) -> Response
   uses { Sql } {
