@@ -23,8 +23,8 @@
 # SQLite gives no value that is an object, so the form cannot be mistaken for another value.
 
 import Std.Bytes.{Bytes}
-import Dynamic.{Dynamic, DecodeError, Text, Items, Fields, Binary}
-import Json.{SyntaxError}
+import Std.Dynamic.{Dynamic, DecodeError, Text, Items, Fields, Binary}
+import Std.Json.{SyntaxError}
 import Sql.{Sql, Transaction, SqlError, Statement}
 
 ## A connection to a database file.

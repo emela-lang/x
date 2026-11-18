@@ -1,6 +1,6 @@
 import Std.Map
-import Dynamic.{Dynamic, Null, Bool, Text, Items, Fields}
-import Dynamic.Number
+import Std.Dynamic.{Dynamic, Null, Bool, Text, Items, Fields}
+import Std.Dynamic.Number
 import Lib.{SyntaxError}
 
 fn number(n: Int) -> Dynamic {

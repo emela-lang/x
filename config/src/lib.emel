@@ -16,7 +16,7 @@
 
 import Std.Env.{Env}
 import Std.Map.{Map}
-import Dynamic.{
+import Std.Dynamic.{
   Dynamic,
   Decode,
   DecodeError,
@@ -29,8 +29,8 @@ import Dynamic.{
   Items,
   Bool,
 }
-import Dynamic.Number
-import Shape.{Shape, Shaped, Field, Record}
+import Std.Dynamic.Number
+import Std.Shape.{Shape, Shaped, Field, Record}
 
 ## A variable that is missing or does not read as its field.
 pub type Problem(variable: String, message: String) derive Eq, Show

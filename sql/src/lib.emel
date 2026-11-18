@@ -5,7 +5,7 @@
 # ```emela
 # import Sql
 # import Sql.{Sql, SqlError}
-# import Dynamic.{DecodeErrors, Text}
+# import Std.Dynamic.{DecodeErrors, Text}
 #
 # fn todos(owner: String) -> List[TodoRow] fails SqlError | DecodeErrors uses { Sql } {
 #   Sql.all("select id, title from todos where owner = ?", [Text(owner)])
@@ -35,8 +35,8 @@
 #
 # What a handler does beyond this is in its documentation.
 
-import Dynamic.{Dynamic, Decode, DecodeErrors, Text, Items, Fields}
-import Json
+import Std.Dynamic.{Dynamic, Decode, DecodeErrors, Text, Items, Fields}
+import Std.Json
 import Std.Exit.{Success, Failure}
 import Std.State.{State}
 

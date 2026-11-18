@@ -1,7 +1,7 @@
-import Dynamic.{Decode, DecodeErrors, Decoded}
-import Dynamic
-import Dynamic.Number
-import Shape.{Shape, Shaped, Field, Record}
+import Std.Dynamic.{Decode, DecodeErrors, Decoded}
+import Std.Dynamic
+import Std.Dynamic.Number
+import Std.Shape.{Shape, Shaped, Field, Record}
 import Redacted.{Redacted}
 import Lib.{ConfigError, Problem, TestEnv}
 

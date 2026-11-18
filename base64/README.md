@@ -29,5 +29,5 @@ fn read(s: String) -> Bytes fails Base64Error {
   - アルファベットの外の文字．標準の `decode` は `-` と `_` を，`decode_url` は `+` と `/` を読まない
   - padding の位置と数の誤り（`Zg=`，`Z===`，padding の後に続く文字）
   - 最後の文字の使われないビットが 0 でないもの（`Zh==`，RFC 4648 §3.5）
-- `Base64Error(message, offset)` の `offset` は入力の先頭からのコードポイントの数で，x/json の `SyntaxError` と同じ形にしている
+- `Base64Error(message, offset)` の `offset` は入力の先頭からのコードポイントの数で，`Std.Json` の `SyntaxError` と同じ形にしている
 - 純粋な Emela で書いていて，host に依存しない．どの target でも同じ結果になる

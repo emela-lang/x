@@ -1,4 +1,4 @@
-import Dynamic.{Dynamic, Null, Bool, Number, Text, Items, Fields, Binary}
+import Std.Dynamic.{Dynamic, Null, Bool, Number, Text, Items, Fields, Binary}
 import Base64
 import Scalar
 

@@ -1,7 +1,7 @@
 import Std.Map
 import Std.Bytes
-import Dynamic.{Dynamic, Null, Bool, Text, Items, Fields, Binary}
-import Dynamic.Number
+import Std.Dynamic.{Dynamic, Null, Bool, Text, Items, Fields, Binary}
+import Std.Dynamic.Number
 import Lib
 
 fn number(n: Int) -> Dynamic {

@@ -1,6 +1,6 @@
 # config
 
-環境変数から型の付いた設定 record を読む．読む変数の名前は record の `Shape`（x/shape）から決め，値は x/dynamic の `Decode.from_dynamic_all` で読む．
+環境変数から型の付いた設定 record を読む．読む変数の名前は record の `Shape`（`Std.Shape`）から決め，値は `Std.Dynamic` の `Decode.from_dynamic_all` で読む．
 
 ```emela
 import Std.Process.{Process}
@@ -57,7 +57,7 @@ APP_PORT: expected number, found text; APP_DATABASE_URL: is not set
 
 ## 秘密値
 
-`Redacted[String]` のフィールドは，ほかのフィールドと同じく `Shaped.shape_in` と `Decode.from_dynamic` で書ける．impl は x/redacted v0.5.0 にある．
+`Redacted[String]` のフィールドは，ほかのフィールドと同じく `Shaped.shape_in` と `Decode.from_dynamic` で書ける．impl は x/redacted v0.6.0 にある．
 
 - `Redacted` は `Show` で `<redacted>` と出るので，設定 record をログに出しても値は出ない
 - `Redacted` の `Decode` は，失敗したときの `DecodeError` にも値を残さない
@@ -104,10 +104,9 @@ with TestEnv(vars: [("APP_PORT", "8080")]) { Config.load("APP_") }
 
 quince もクエリ文字列とパスの値を Shape に合わせて `Dynamic` に直している（`quince/src/input.emel`）．共通にできるかを考えたが，x/config に置いた．
 
-- x/dynamic には置けない．この処理は `Shape` を読むが，x/shape が x/dynamic に依存しているので，x/dynamic から x/shape を読むと依存が循環する
-- Shape に依存しない部分（数と真偽値の読み方）だけを x/dynamic に出すと，10 行ほどの関数しか残らない
+- `Shape` と `Dynamic` はどちらも std（`Std.Shape`，`Std.Dynamic`）にある．共通にするなら置き場所は std になり，std に足すには proposal が要る
+- Shape に依存しない部分（数と真偽値の読み方）だけを出すと，10 行ほどの関数しか残らない
 - 受け付ける書き方が違う．環境変数では `1` `yes` `on` も真にし，`List` は `,` 区切りで読む．quince は `true` と `false` だけを読み，`List` は同じ名前の繰り返しから作る
-- 共通にする必要が出たら，置き場所は x/dynamic でなく，Shape を定義している x/shape になる
 
 ## 今後
 

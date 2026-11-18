@@ -1,5 +1,5 @@
 import Std.Map.{Map}
-import Dynamic.{Dynamic, Decode, Encode, DecodeError, Null, Text, Items, Fields}
+import Std.Dynamic.{Dynamic, Decode, Encode, DecodeError, Null, Text, Items, Fields}
 import Scalar
 import Write
 

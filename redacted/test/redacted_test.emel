@@ -1,6 +1,6 @@
-import Dynamic
-import Dynamic.{Decode, DecodeError, DecodeErrors, Text, Bool}
-import Shape.{Shape, Shaped, Annotated}
+import Std.Dynamic
+import Std.Dynamic.{Decode, DecodeError, DecodeErrors, Text, Bool}
+import Std.Shape.{Shape, Shaped, Annotated}
 import Lib.{Redacted}
 
 @test

@@ -1,4 +1,4 @@
-import Dynamic.{Dynamic, Decode, Encode, DecodeError, Text, Items}
+import Std.Dynamic.{Dynamic, Decode, Encode, DecodeError, Text, Items}
 import Lib.{SyntaxError}
 
 type User(name: String, tags: List[String])

@@ -7,7 +7,7 @@ import Std.Http
 import Std.Http.Request.{Request, Get, Post}
 import Std.Http.Response.{Response}
 import Std.Platform.{Platform}
-import Dynamic.{Dynamic, Decode, DecodeErrors, Text}
+import Std.Dynamic.{Dynamic, Decode, DecodeErrors, Text}
 import Sql
 import Sql.{Sql, SqlError}
 import Sqlite.{BunSqlite}
