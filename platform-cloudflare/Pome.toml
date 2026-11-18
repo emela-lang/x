@@ -1,12 +1,19 @@
 [pome]
 name = "github.com/emela-lang/x/platform-cloudflare"
-version = "0.7.1"
-emela = "0.27.0"
+version = "0.7.2"
+emela = "0.28.0"
 module = "Cloudflare"
 targets = ["js"]
 
 [dependencies]
-"github.com/emela-lang/x/kv" = "v0.1.2"
-"github.com/emela-lang/x/sql" = "v0.3.1"
-"github.com/emela-lang/x/dynamic" = "v0.5.1"
-"github.com/emela-lang/x/json" = "v0.3.1"
+"github.com/emela-lang/x/kv" = "v0.1.3"
+"github.com/emela-lang/x/sql" = "v0.3.2"
+"github.com/emela-lang/x/dynamic" = "v0.5.2"
+"github.com/emela-lang/x/json" = "v0.3.3"
+
+[replace]
+"github.com/emela-lang/x/kv" = { path = "../kv" }
+"github.com/emela-lang/x/sql" = { path = "../sql" }
+"github.com/emela-lang/x/dynamic" = { path = "../dynamic" }
+"github.com/emela-lang/x/json" = { path = "../json" }
+"github.com/emela-lang/x/base64" = { path = "../base64" }
