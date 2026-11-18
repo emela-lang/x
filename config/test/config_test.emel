@@ -1,4 +1,4 @@
-import Std.Dynamic.{Decode, DecodeErrors, Decoded}
+import Std.Dynamic.{Decode}
 import Std.Dynamic
 import Std.Dynamic.Number
 import Std.Shape.{Shape, Shaped, Field, Record}
@@ -12,8 +12,9 @@ type AppConfig(
   log_level: Option[String],
   origins: List[String],
 )
+  derive Decode
 
-# What `derive Shaped` is meant to generate.
+# Written by hand, not derived: `port` carries a description, which `derive Shaped` cannot add.
 impl AppConfig: Shaped {
   fn shape_in(proxy, visiting) {
     Shape.visit("AppConfig", visiting, |visiting| {
@@ -36,47 +37,6 @@ impl AppConfig: Shaped {
         ],
       )
     })
-  }
-}
-
-# What `derive Decode` is meant to generate.
-impl AppConfig: Decode {
-  fn from_dynamic(d) {
-    AppConfig(
-      port: d.field("port", Decode.from_dynamic),
-      debug: d.field("debug", Decode.from_dynamic),
-      database_url: d.field("database_url", Decode.from_dynamic),
-      log_level: d.field("log_level", Decode.from_dynamic),
-      origins: d.field("origins", Decode.from_dynamic),
-    )
-  }
-
-  fn from_dynamic_all(d) {
-    port = Dynamic.attempt(|| d.field_all("port", Decode.from_dynamic_all))
-    debug = Dynamic.attempt(|| d.field_all("debug", Decode.from_dynamic_all))
-    database_url = Dynamic.attempt(|| {
-      d.field_all("database_url", Decode.from_dynamic_all)
-    })
-    log_level = Dynamic.attempt(|| d.field_all("log_level", Decode.from_dynamic_all))
-    origins = Dynamic.attempt(|| d.field_all("origins", Decode.from_dynamic_all))
-    (port, debug, database_url, log_level, origins) match {
-      (
-        Decoded(port),
-        Decoded(debug),
-        Decoded(database_url),
-        Decoded(log_level),
-        Decoded(origins),
-      ) -> AppConfig(port:, debug:, database_url:, log_level:, origins:)
-      _ -> fail DecodeErrors(
-        errors: [
-          port.errors_of(),
-          debug.errors_of(),
-          database_url.errors_of(),
-          log_level.errors_of(),
-          origins.errors_of(),
-        ].flatten(),
-      )
-    }
   }
 }
 
