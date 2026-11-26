@@ -54,7 +54,7 @@ pub fn load[A: Decode + Shaped](prefix: String) -> A fails ConfigError uses { En
   proxy: Option[A] = None
   shape = Shaped.shape(proxy)
   fields = record_fields(shape)
-  env = use Env
+  env <- Env
   values = fields.filter_map(|field| {
     env.get(variable(prefix, field.name)) match {
       Some(text) if text != "" -> Some((field.name, from_text(field.shape, text)))

@@ -25,13 +25,15 @@ pub fn app(request: Request) -> Response {
 }
 
 fn route(request: Request) -> Response uses { Console, Env, Kv, Sql } {
-  (use Console).print_line("#{request.method} #{request.url}")
+  console <- Console
+  console.print_line("#{request.method} #{request.url}")
   (request.method, request.segments()) match {
     (Get, []) -> {
-      kv = use Kv
+      kv <- Kv
       count = kv.get("visits").and_then(parse_count).or(0)
       kv.put("visits", (count + 1).to_string())
-      greeting = (use Env).get("GREETING").or("hello")
+      env <- Env
+      greeting = env.get("GREETING").or("hello")
       Response.new(200, "#{greeting} from Emela (visit ##{count + 1})\n")
     }
     (Get, ["hello", who]) -> Response.new(200, "hello, #{who}\n")

@@ -10,7 +10,7 @@ import Lib.{Uuid}
 # Answers the Ints in the state in order, then 0.
 handler FixedRandom: Random {
   fn int() {
-    st = use State[List[Int]]
+    st <- State[List[Int]]
     st.get() match {
       [n, ..rest] -> {
         st.set(rest)

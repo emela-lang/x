@@ -90,7 +90,7 @@ fn pad(n: Int, width: Int) -> String {
   pad_onto(n.to_string(), width)
 }
 
-# Digits are ASCII, so bytes count them without the grapheme tables (which target c lacks).
+# Digits are ASCII, so bytes count them without the grapheme tables.
 fn pad_onto(s: String, width: Int) -> String {
   if s.byte_size() >= width { s } else { pad_onto("0#{s}", width) }
 }

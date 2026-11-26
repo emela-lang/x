@@ -1,4 +1,4 @@
 [pome]
 name = "github.com/emela-lang/x/rule"
-version = "0.1.0"
-emela = "0.28.0"
+version = "0.1.1"
+emela = "0.29.0"

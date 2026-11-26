@@ -6,7 +6,7 @@
 # import Kv.{Kv}
 #
 # fn remember(name: String) -> Bool uses { Kv } {
-#   kv = use Kv
+#   kv <- Kv
 #   seen = kv.get(name) != None
 #   kv.put(name, "seen")
 #   seen
@@ -40,14 +40,17 @@ pub effect Kv {
 ## Every operation takes effect at once and never suspends.
 pub handler TestKv: Kv {
   suspend fn get(key, resume) {
-    resume((use State[Map[String, String]]).get().get(key))
+    state <- State[Map[String, String]]
+    resume(state.get().get(key))
   }
   suspend fn put(key, value, resume) {
-    (use State[Map[String, String]]).update(|m| m.insert(key, value))
+    state <- State[Map[String, String]]
+    state.update(|m| m.insert(key, value))
     resume(())
   }
   suspend fn delete(key, resume) {
-    (use State[Map[String, String]]).update(|m| m.remove(key))
+    state <- State[Map[String, String]]
+    state.update(|m| m.remove(key))
     resume(())
   }
 }

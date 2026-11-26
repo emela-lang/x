@@ -79,7 +79,7 @@ fn get_all(env: List[(String, String)], files: TestFiles) -> List[Option[String]
   (values, _) = State.run(files, || {
     with TestEnv(vars: env) {
       with TestFileSystem, DotEnv(path: ".env") {
-        e = use Env
+        e <- Env
         [e.get("A"), e.get("B"), e.get("C")]
       }
     }

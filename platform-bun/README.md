@@ -15,11 +15,11 @@ pub fn app(request: Request) -> Response {
 ## 動かす
 
 ```sh
-EMELA_NODE=bun emela run      # src/main.emel の sample（SQLite にメモを置く）
-EMELA_NODE=bun emela test
+EMELA_JS_HOST=bun emela run      # src/main.emel の sample（SQLite にメモを置く）
+EMELA_JS_HOST=bun emela test
 ```
 
-`EMELA_NODE` で emela が使う host を Bun にする．Node で走らせると `bun:sqlite` が読めずに落ちる．
+`EMELA_JS_HOST` で emela が使う host を Bun にする．Node で走らせると `bun:sqlite` が読めずに落ちる．
 
 ## handler
 

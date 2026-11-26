@@ -1,4 +1,4 @@
-# A sample HTTP service on Bun: keeps notes in SQLite. Run with `EMELA_NODE=bun emela run`.
+# A sample HTTP service on Bun: keeps notes in SQLite. Run with `EMELA_JS_HOST=bun emela run`.
 #
 #   GET /notes  -> the notes, one per line
 #   POST /notes -> adds the body as a note

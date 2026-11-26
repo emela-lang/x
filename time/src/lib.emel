@@ -26,7 +26,8 @@ import OffsetDateTime.{OffsetDateTime}
 
 ## The current time from Clock, in `offset`.
 pub fn now(offset: Offset) -> OffsetDateTime uses { Clock } {
-  OffsetDateTime.from_instant((use Clock).now(), offset)
+  clock <- Clock
+  OffsetDateTime.from_instant(clock.now(), offset)
 }
 
 ## The current date from Clock, in `offset`. In `+09:00` the date changes at 15:00 UTC.
@@ -196,7 +197,7 @@ fn pad(n: Int, width: Int) -> String {
   pad_onto(n.to_string(), width)
 }
 
-# Digits are ASCII, so bytes count them without the grapheme tables (which target c lacks).
+# Digits are ASCII, so bytes count them without the grapheme tables.
 fn pad_onto(s: String, width: Int) -> String {
   if s.byte_size() >= width { s } else { pad_onto("0#{s}", width) }
 }
