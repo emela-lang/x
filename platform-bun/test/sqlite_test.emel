@@ -1,4 +1,4 @@
-# Run with Bun: `EMELA_NODE=bun emela test`.
+# Run with Bun: `EMELA_JS_HOST=bun emela test`.
 
 import Std.Bytes.{Bytes}
 import Std.Dynamic.{Dynamic, Decode, DecodeErrors, Text, Bool, Items, Binary}
