@@ -106,7 +106,8 @@ fn batch_runs_in_order_and_stops_at_a_failure() {
   db = TestDatabase(respond: |_, n| if n == 1 { None } else { Some([]) }, sent: [])
   (_, after) = State.run(db, || {
     with TestSql {
-      (use Sql).batch(
+      sql <- Sql
+      sql.batch(
         [
           Statement(text: "insert a", params: []),
           Statement(text: "insert b", params: []),

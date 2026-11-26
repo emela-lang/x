@@ -40,7 +40,8 @@ fn rows_are_written_and_read() {
 @test
 fn values_come_back_as_sqlite_keeps_them() {
   rows = with BunSqlite(path: ":memory:") {
-    (use Sql).query(
+    sql <- Sql
+    sql.query(
       Statement(
         text: "select ? as flag, ? as tags, 1152921504606846976 as big, null as absent",
         params: [Bool(True), Items([Text("x")])],
@@ -80,7 +81,8 @@ fn a_refused_statement_fails_with_sqlites_message() {
 fn a_batch_takes_effect_together_or_not_at_all() {
   after = with BunSqlite(path: ":memory:") {
     setup()
-    failed = (use Sql).batch(
+    sql <- Sql
+    failed = sql.batch(
       [
         Statement(text: "insert into notes (body) values ('a')", params: []),
         Statement(text: "insert into notes (body) values (null)", params: []),
@@ -88,7 +90,7 @@ fn a_batch_takes_effect_together_or_not_at_all() {
     ) escape {
       SqlError(..) -> []
     }
-    counts = (use Sql).batch(
+    counts = sql.batch(
       [
         Statement(text: "insert into notes (body) values ('b')", params: []),
         Statement(text: "insert into notes (body) values ('c')", params: []),
@@ -153,7 +155,8 @@ fn a_blob_is_written_and_read_as_bytes() {
   ]
   found = with BunSqlite(path: ":memory:") {
     Sql.execute("create table files (id integer primary key, name text, data blob not null)", [])
-    (use Sql).batch(
+    sql <- Sql
+    sql.batch(
       written.map(|f| {
         Statement(
           text: "insert into files (name, data) values (?, ?)",
@@ -170,7 +173,8 @@ fn a_blob_is_written_and_read_as_bytes() {
 @test
 fn a_blob_written_in_sql_comes_back_as_binary() {
   rows = with BunSqlite(path: ":memory:") {
-    (use Sql).query(
+    sql <- Sql
+    sql.query(
       Statement(
         text: "select x'00ff' as data, typeof(?) as kind",
         params: [Binary(Bytes.hex("01"))],

@@ -50,7 +50,8 @@ fn now_and_today_come_from_clock() {
 fn now_moves_with_test_clock() {
   (later, _) = State.run(at(0), || {
     with TestClock {
-      (use Clock).sleep(90000)
+      clock <- Clock
+      clock.sleep(90000)
       Lib.now(Offset.utc()).to_string()
     }
   })

@@ -34,13 +34,15 @@ pub error DotEnvError(path: String, line: Int, reason: String) derive Show
 ## The variables of the file at `path`, read when the `with` is entered, under the outer Env.
 pub handler DotEnv(vars: Map[String, String]): Env {
   init(path: String) {
-    text = (use FileSystem).read_text(path) escape {
+    file_system <- FileSystem
+    text = file_system.read_text(path) escape {
       FileNotFound(..) -> ""
     }
     DotEnv(vars: Map.from_list(parse(path, text)))
   }
   fn get(name) {
-    (use Env).get(name) match {
+    env <- Env
+    env.get(name) match {
       Some(value) -> Some(value)
       None        -> self.vars.get(name)
     }

@@ -103,7 +103,8 @@ pub handler BunSqliteTransaction: Transaction {
 }
 
 fn run(text: String) -> () fails SqlError uses { Sql } {
-  (use Sql).execute(Statement(text:, params: []))
+  sql <- Sql
+  sql.execute(Statement(text:, params: []))
   ()
 }
 

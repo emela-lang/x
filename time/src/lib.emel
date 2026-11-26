@@ -26,7 +26,8 @@ import OffsetDateTime.{OffsetDateTime}
 
 ## The current time from Clock, in `offset`.
 pub fn now(offset: Offset) -> OffsetDateTime uses { Clock } {
-  OffsetDateTime.from_instant((use Clock).now(), offset)
+  clock <- Clock
+  OffsetDateTime.from_instant(clock.now(), offset)
 }
 
 ## The current date from Clock, in `offset`. In `+09:00` the date changes at 15:00 UTC.

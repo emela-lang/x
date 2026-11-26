@@ -3,7 +3,7 @@ import Std.State.{State}
 import Lib.{Kv, TestKv}
 
 fn remember(name: String) -> Bool uses { Kv } {
-  kv = use Kv
+  kv <- Kv
   seen = kv.get(name) != None
   kv.put(name, "seen")
   seen
@@ -13,7 +13,7 @@ fn remember(name: String) -> Bool uses { Kv } {
 fn get_returns_what_put_set() {
   (value, store) = State.run(Map.empty(), || {
     with TestKv {
-      kv = use Kv
+      kv <- Kv
       kv.put("a", "1")
       kv.put("a", "2")
       kv.get("a")
@@ -25,7 +25,12 @@ fn get_returns_what_put_set() {
 
 @test
 fn a_key_never_put_is_none() {
-  (value, _) = State.run(Map.empty(), || with TestKv { (use Kv).get("a") })
+  (value, _) = State.run(Map.empty(), || {
+    with TestKv {
+      kv <- Kv
+      kv.get("a")
+    }
+  })
   assert value == None
 }
 
@@ -33,7 +38,7 @@ fn a_key_never_put_is_none() {
 fn delete_unsets_the_key() {
   (value, store) = State.run(Map.from_list([("a", "1"), ("b", "2")]), || {
     with TestKv {
-      kv = use Kv
+      kv <- Kv
       kv.delete("a")
       kv.delete("c")
       kv.get("a")

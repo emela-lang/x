@@ -28,7 +28,7 @@ pub fn nil() -> Uuid {
 
 ## A version 4 UUID: 122 random bits from Random, with the version and the variant set.
 pub fn v4() -> Uuid uses { Random } {
-  r = use Random
+  r <- Random
   random = [r.int(), r.int(), r.int(), r.int()].flat_map(int_bytes)
   Uuid(bytes: stamp(random, 4))
 }
@@ -38,8 +38,9 @@ pub fn v4() -> Uuid uses { Random } {
 ## made in the same millisecond are in random order. A time before 1970 or after the year 10889
 ## does not fit in 48 bits, and only its low 48 bits are kept.
 pub fn v7() -> Uuid uses { Clock, Random } {
-  ms = (use Clock).now().to_unix_milliseconds()
-  r = use Random
+  clock <- Clock
+  ms = clock.now().to_unix_milliseconds()
+  r <- Random
   random = [r.int(), r.int(), r.int()].flat_map(int_bytes)
   Uuid(bytes: stamp(time_bytes(ms).append(random.take(10)), 7))
 }
