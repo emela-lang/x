@@ -1,4 +1,4 @@
 [pome]
 name = "github.com/emela-lang/x/redacted"
-version = "0.6.0"
-emela = "0.28.0"
+version = "0.6.1"
+emela = "0.29.0"

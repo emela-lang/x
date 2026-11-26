@@ -1,12 +1,12 @@
 [pome]
 name = "github.com/emela-lang/x/platform-bun"
-version = "0.3.0"
-emela = "0.28.0"
+version = "0.3.1"
+emela = "0.29.0"
 module = "Bun"
 targets = ["js"]
 
 [dependencies]
-"github.com/emela-lang/x/sql" = "v0.4.0"
+"github.com/emela-lang/x/sql" = "v0.4.1"
 
 [replace]
 "github.com/emela-lang/x/sql" = { path = "../sql" }

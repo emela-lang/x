@@ -1,4 +1,4 @@
 [pome]
 name = "github.com/emela-lang/x/base64"
-version = "0.1.2"
-emela = "0.28.0"
+version = "0.1.3"
+emela = "0.29.0"
